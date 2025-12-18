@@ -80,10 +80,35 @@ export const auth = {
     return res;
   }),
 
-  login: (email: string, displayName?: string) =>
-    apiFetch<{ user: User }>('/auth/login', {
+  // Register new account with username/password
+  register: (username: string, password: string, email?: string, displayName?: string) =>
+    apiFetch<{ user: User; sessionId: string }>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ email, displayName }),
+      body: JSON.stringify({ username, password, email, displayName }),
+    }).then((res) => {
+      if (res.success && res.data?.sessionId) {
+        setSessionId(res.data.sessionId);
+      }
+      return res;
+    }),
+
+  // Login with username/password
+  login: (username: string, password: string) =>
+    apiFetch<{ user: User; sessionId: string }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }).then((res) => {
+      if (res.success && res.data?.sessionId) {
+        setSessionId(res.data.sessionId);
+      }
+      return res;
+    }),
+
+  // Convert anonymous session to authenticated account
+  convertAccount: (username: string, password: string, email?: string, displayName?: string) =>
+    apiFetch<{ user: User; message: string }>('/auth/convert', {
+      method: 'POST',
+      body: JSON.stringify({ username, password, email, displayName }),
     }),
 
   logout: () => apiFetch<{ message: string }>('/auth/logout', { method: 'POST' }).then((res) => {
@@ -243,10 +268,11 @@ export const organizations = {
 
 // ===== ADMIN =====
 export const admin = {
+  // Service Types (any authenticated user can read)
   getServiceTypes: () => apiFetch<ServiceType[]>('/admin/service-types'),
-
   getServiceType: (id: string) => apiFetch<ServiceType>(`/admin/service-types/${id}`),
 
+  // Platform Admin Only - Service Type management
   updateServiceType: (id: string, data: Partial<ServiceType>) =>
     apiFetch<ServiceType>(`/admin/service-types/${id}`, {
       method: 'PUT',
@@ -265,13 +291,111 @@ export const admin = {
       body: JSON.stringify(data),
     }),
 
+  // Platform Admin Only - Stats
   getStats: () =>
-    apiFetch<{
-      escrows: { active: number; completed: number; pending: number; total: number };
-      users: { total: number; providers: number };
-      volume: { total: number; fees: number };
-    }>('/admin/stats'),
+    apiFetch<PlatformStats>('/admin/stats'),
+
+  // Platform Admin Only - Users
+  getUsers: (limit = 100, offset = 0, role?: string) => {
+    const params = new URLSearchParams();
+    params.append('limit', limit.toString());
+    params.append('offset', offset.toString());
+    if (role) params.append('role', role);
+    return apiFetch<AdminUser[]>(`/admin/users?${params.toString()}`);
+  },
+
+  updateUserRole: (userId: string, role: UserRole) =>
+    apiFetch<User>(`/admin/users/${userId}/role`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    }),
+
+  // Platform Admin Only - Organizations
+  getOrganizations: (limit = 100, offset = 0) =>
+    apiFetch<AdminOrganization[]>(`/admin/organizations?limit=${limit}&offset=${offset}`),
+
+  // Platform Admin Only - Escrows
+  getEscrows: (limit = 100, offset = 0, status?: string) => {
+    const params = new URLSearchParams();
+    params.append('limit', limit.toString());
+    params.append('offset', offset.toString());
+    if (status) params.append('status', status);
+    return apiFetch<AdminEscrow[]>(`/admin/escrows?${params.toString()}`);
+  },
 };
+
+// Admin-specific types
+export interface PlatformStats {
+  users: {
+    total: number;
+    authenticated: number;
+    anonymous: number;
+    providers: number;
+    admins: number;
+  };
+  organizations: {
+    total: number;
+    active: number;
+  };
+  escrows: {
+    total: number;
+    active: number;
+    completed: number;
+    canceled: number;
+    totalVolume: number;
+    totalFees: number;
+  };
+  accounts: {
+    totalBalance: number;
+    inContract: number;
+    available: number;
+  };
+}
+
+export interface AdminUser {
+  id: string;
+  email?: string;
+  username?: string;
+  displayName?: string;
+  avatarUrl?: string;
+  role: UserRole;
+  isAuthenticated: boolean;
+  isProvider: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminOrganization {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl?: string;
+  billingEmail?: string;
+  isActive: boolean;
+  memberCount: number;
+  totalBalance: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminEscrow {
+  id: string;
+  serviceTypeId: string;
+  serviceTypeName: string;
+  partyAUserId: string;
+  partyAName?: string;
+  partyAEmail?: string;
+  partyBUserId?: string;
+  partyBName?: string;
+  partyBEmail?: string;
+  status: EscrowStatus;
+  amount: number;
+  currency: string;
+  platformFee: number;
+  metadata?: Record<string, any>;
+  createdAt: string;
+  updatedAt: string;
+}
 
 // ===== SERVICE TYPES (public) =====
 export const serviceTypes = {
@@ -307,12 +431,16 @@ export type EscrowStatus =
 
 export type ServiceTypeId = 'TRAFFIC_BUY' | 'DOCUMENT_DELIVERY' | 'API_KEY_EXCHANGE' | 'CUSTOM';
 
+export type UserRole = 'user' | 'provider' | 'admin' | 'platform_admin';
+
 export interface User {
   id: string;
   externalId?: string;
   email?: string;
+  username?: string;
   displayName?: string;
   avatarUrl?: string;
+  role: UserRole;
   isAuthenticated: boolean;
   isProvider: boolean;
   sessionId?: string;

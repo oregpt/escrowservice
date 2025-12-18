@@ -10,6 +10,7 @@ import {
   traffic,
   attachments,
   type User,
+  type UserRole,
   type AccountWithTotals,
   type Escrow,
   type EscrowWithParties,
@@ -17,6 +18,10 @@ import {
   type ServiceType,
   type Organization,
   type CreateEscrowRequest,
+  type PlatformStats,
+  type AdminUser,
+  type AdminOrganization,
+  type AdminEscrow,
 } from '@/lib/api';
 
 // ===== AUTH HOOKS =====
@@ -32,12 +37,67 @@ export function useAuth() {
   });
 }
 
+// Register new account with username/password
+export function useRegister() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      username,
+      password,
+      email,
+      displayName,
+    }: {
+      username: string;
+      password: string;
+      email?: string;
+      displayName?: string;
+    }) => {
+      const res = await auth.register(username, password, email, displayName);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['auth'] });
+    },
+  });
+}
+
+// Login with username/password
 export function useLogin() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ email, displayName }: { email: string; displayName?: string }) => {
-      const res = await auth.login(email, displayName);
+    mutationFn: async ({ username, password }: { username: string; password: string }) => {
+      const res = await auth.login(username, password);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['auth'] });
+      queryClient.invalidateQueries({ queryKey: ['account'] });
+      queryClient.invalidateQueries({ queryKey: ['escrows'] });
+    },
+  });
+}
+
+// Convert anonymous session to authenticated account
+export function useConvertAccount() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      username,
+      password,
+      email,
+      displayName,
+    }: {
+      username: string;
+      password: string;
+      email?: string;
+      displayName?: string;
+    }) => {
+      const res = await auth.convertAccount(username, password, email, displayName);
       if (!res.success) throw new Error(res.error);
       return res.data;
     },
@@ -421,12 +481,84 @@ export function useUpdateServiceType() {
   });
 }
 
+export function useCreateServiceType() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: {
+      id: string;
+      name: string;
+      description?: string;
+      platformFeePercent?: number;
+      metadataSchema?: Record<string, string>;
+    }) => {
+      const res = await admin.createServiceType(data);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'service-types'] });
+      queryClient.invalidateQueries({ queryKey: ['service-types'] });
+    },
+  });
+}
+
+// Platform Admin Stats
 export function useAdminStats() {
   return useQuery({
     queryKey: ['admin', 'stats'],
     queryFn: async () => {
       const res = await admin.getStats();
       return res.success ? res.data : null;
+    },
+  });
+}
+
+// Platform Admin - All Users
+export function useAdminUsers(limit = 100, offset = 0, role?: string) {
+  return useQuery({
+    queryKey: ['admin', 'users', { limit, offset, role }],
+    queryFn: async () => {
+      const res = await admin.getUsers(limit, offset, role);
+      return res.success ? res.data : [];
+    },
+  });
+}
+
+// Platform Admin - Update User Role
+export function useUpdateUserRole() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ userId, role }: { userId: string; role: UserRole }) => {
+      const res = await admin.updateUserRole(userId, role);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+    },
+  });
+}
+
+// Platform Admin - All Organizations
+export function useAdminOrganizations(limit = 100, offset = 0) {
+  return useQuery({
+    queryKey: ['admin', 'organizations', { limit, offset }],
+    queryFn: async () => {
+      const res = await admin.getOrganizations(limit, offset);
+      return res.success ? res.data : [];
+    },
+  });
+}
+
+// Platform Admin - All Escrows
+export function useAdminEscrows(limit = 100, offset = 0, status?: string) {
+  return useQuery({
+    queryKey: ['admin', 'escrows', { limit, offset, status }],
+    queryFn: async () => {
+      const res = await admin.getEscrows(limit, offset, status);
+      return res.success ? res.data : [];
     },
   });
 }

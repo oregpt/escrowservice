@@ -25,9 +25,12 @@ CREATE TABLE IF NOT EXISTS organizations (
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     external_id VARCHAR(255),
-    email VARCHAR(255),
+    email VARCHAR(255) UNIQUE,
+    username VARCHAR(100) UNIQUE,
+    password_hash VARCHAR(255),
     display_name VARCHAR(255),
     avatar_url TEXT,
+    role VARCHAR(20) DEFAULT 'user',
     is_authenticated BOOLEAN DEFAULT false,
     is_provider BOOLEAN DEFAULT false,
     session_id VARCHAR(255),
@@ -219,6 +222,40 @@ CREATE INDEX IF NOT EXISTS idx_users_session ON users(session_id);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 `;
 
+// Migration for existing databases - add new columns if they don't exist
+const MIGRATION_ADD_COLUMNS = `
+-- Add new columns to users table if they don't exist
+DO $$
+BEGIN
+    -- Add username column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'username') THEN
+        ALTER TABLE users ADD COLUMN username VARCHAR(100);
+    END IF;
+
+    -- Add password_hash column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'password_hash') THEN
+        ALTER TABLE users ADD COLUMN password_hash VARCHAR(255);
+    END IF;
+
+    -- Add role column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'role') THEN
+        ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'user';
+    END IF;
+END $$;
+
+-- Create unique index on username if column exists
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_users_username') THEN
+        CREATE UNIQUE INDEX idx_users_username ON users(username) WHERE username IS NOT NULL;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_users_role') THEN
+        CREATE INDEX idx_users_role ON users(role);
+    END IF;
+END $$;
+`;
+
 const SEED_SERVICE_TYPES = `
 INSERT INTO service_types (id, name, description, party_a_delivers, party_b_delivers, platform_fee_percent, metadata_schema)
 VALUES
@@ -261,6 +298,25 @@ VALUES
 ON CONFLICT (id) DO NOTHING;
 `;
 
+// Seed platform admin - password is 'admin123' (bcrypt hash)
+// In production, change this password immediately!
+const SEED_PLATFORM_ADMIN = `
+INSERT INTO users (id, username, email, password_hash, display_name, role, is_authenticated)
+VALUES (
+    'a0000000-0000-0000-0000-000000000001',
+    'admin',
+    'admin@escrowservice.local',
+    '$2b$10$rQZ5Wm.xJY3JXqZ8ZQKQV.QYZ5Wm.xJY3JXqZ8ZQKQVuNvKxK6Wy', -- admin123
+    'Platform Admin',
+    'platform_admin',
+    true
+)
+ON CONFLICT (id) DO UPDATE SET
+    role = 'platform_admin',
+    username = 'admin',
+    display_name = 'Platform Admin';
+`;
+
 async function migrate() {
   console.log('Running database migrations...');
 
@@ -269,9 +325,17 @@ async function migrate() {
     await pool.query(MIGRATION_SQL);
     console.log('Schema migration completed');
 
+    // Run column additions for existing databases
+    await pool.query(MIGRATION_ADD_COLUMNS);
+    console.log('Column migrations completed');
+
     // Seed service types
     await pool.query(SEED_SERVICE_TYPES);
     console.log('Service types seeded');
+
+    // Seed platform admin
+    await pool.query(SEED_PLATFORM_ADMIN);
+    console.log('Platform admin seeded (username: admin)');
 
     console.log('All migrations completed successfully!');
   } catch (error) {

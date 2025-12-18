@@ -2,7 +2,7 @@ import { Header } from "@/components/layout/Header";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { LayoutList, Building2, Settings } from "lucide-react";
+import { LayoutDashboard, LayoutList, Building2, Settings } from "lucide-react";
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -14,6 +14,7 @@ export function AdminLayout({ children, title, description }: AdminLayoutProps) 
   const [location] = useLocation();
 
   const sidebarItems = [
+    { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
     { label: "Service Types", href: "/admin/service-types", icon: LayoutList },
     { label: "Organizations", href: "/admin/organizations", icon: Building2 },
     { label: "Platform Settings", href: "/admin/settings", icon: Settings },

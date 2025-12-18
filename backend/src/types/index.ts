@@ -15,18 +15,28 @@ export interface Organization {
   updatedAt: Date;
 }
 
+// User Roles
+export type UserRole = 'user' | 'provider' | 'admin' | 'platform_admin';
+
 // User
 export interface User {
   id: string;
   externalId?: string;
   email?: string;
+  username?: string;
   displayName?: string;
   avatarUrl?: string;
+  role: UserRole;
   isAuthenticated: boolean;
   isProvider: boolean;
   sessionId?: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+// User with password (internal use only, never expose to API)
+export interface UserWithPassword extends User {
+  passwordHash?: string;
 }
 
 // Organization Member
@@ -272,4 +282,52 @@ export interface ApiResponse<T> {
   data?: T;
   error?: string;
   message?: string;
+}
+
+// Auth Request Types
+export interface RegisterRequest {
+  username: string;
+  password: string;
+  email?: string;
+  displayName?: string;
+}
+
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface ConvertAccountRequest {
+  username: string;
+  password: string;
+  email?: string;
+  displayName?: string;
+}
+
+// Admin Stats
+export interface PlatformStats {
+  users: {
+    total: number;
+    authenticated: number;
+    anonymous: number;
+    providers: number;
+    admins: number;
+  };
+  organizations: {
+    total: number;
+    active: number;
+  };
+  escrows: {
+    total: number;
+    active: number;
+    completed: number;
+    canceled: number;
+    totalVolume: number;
+    totalFees: number;
+  };
+  accounts: {
+    totalBalance: number;
+    inContract: number;
+    available: number;
+  };
 }
