@@ -11,15 +11,33 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useAuth, useOrganizations, useLogout } from "@/hooks/use-api";
 
 export function Header() {
   const [location] = useLocation();
+  const { data: authData } = useAuth();
+  const { data: orgs } = useOrganizations();
+  const logout = useLogout();
+
+  const user = authData?.user;
+  const currentOrg = orgs?.[0]; // Use first org for now
+
+  // Get initials from display name or email
+  const getInitials = () => {
+    if (user?.displayName) {
+      return user.displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+    }
+    if (user?.email) {
+      return user.email[0].toUpperCase();
+    }
+    return 'U';
+  };
 
   const navItems = [
     { label: "Dashboard", href: "/", icon: LayoutDashboard },
     { label: "Escrows", href: "/escrow", icon: ShieldCheck },
     { label: "Account", href: "/account", icon: Wallet },
-    { label: "Organization", href: "/org/1", icon: Building2 },
+    { label: "Organization", href: currentOrg ? `/org/${currentOrg.id}` : "/org/new", icon: Building2 },
   ];
 
   return (
@@ -57,25 +75,29 @@ export function Header() {
               <Bell className="h-5 w-5" />
             </Button>
 
-            <div className="hidden sm:flex items-center gap-2 border-l pl-4 ml-2">
-              <span className="text-xs text-muted-foreground font-mono">ORG: MPC Holdings</span>
-            </div>
+            {currentOrg && (
+              <div className="hidden sm:flex items-center gap-2 border-l pl-4 ml-2">
+                <span className="text-xs text-muted-foreground font-mono">ORG: {currentOrg.name}</span>
+              </div>
+            )}
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                   <Avatar className="h-8 w-8 border">
-                    <AvatarImage src="/avatars/01.png" alt="@user" />
-                    <AvatarFallback>JD</AvatarFallback>
+                    <AvatarImage src={user?.avatarUrl || "/avatars/01.png"} alt="@user" />
+                    <AvatarFallback>{getInitials()}</AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-56" align="end" forceMount>
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none">John Doe</p>
+                    <p className="text-sm font-medium leading-none">
+                      {user?.displayName || user?.email || 'Guest User'}
+                    </p>
                     <p className="text-xs leading-none text-muted-foreground">
-                      john@example.com
+                      {user?.email || (user?.isAuthenticated ? 'Authenticated' : 'Anonymous Session')}
                     </p>
                   </div>
                 </DropdownMenuLabel>
@@ -83,7 +105,7 @@ export function Header() {
                 <DropdownMenuItem asChild>
                   <Link href="/settings">Settings</Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={() => logout.mutate()}>
                   Log out
                 </DropdownMenuItem>
               </DropdownMenuContent>
