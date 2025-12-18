@@ -51,6 +51,26 @@ export default function Dashboard() {
               </Link>
             </div>
 
+            {/* Inbox Section for Pending Actions */}
+            <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-4 mb-6">
+              <h3 className="text-sm font-semibold text-blue-900 mb-3 flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
+                Pending Your Acceptance
+              </h3>
+              <div className="space-y-3">
+                <div className="bg-white p-3 rounded border shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                   <div>
+                     <div className="font-medium text-sm">Traffic Buy Request</div>
+                     <div className="text-xs text-muted-foreground">From: <span className="font-medium text-foreground">Alice Wonder</span> • $450.00 USD</div>
+                   </div>
+                   <div className="flex gap-2">
+                     <Button size="sm" variant="outline" className="h-8 text-xs border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800">Reject</Button>
+                     <Button size="sm" className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white">Accept & Fund</Button>
+                   </div>
+                </div>
+              </div>
+            </div>
+
             <div className="grid gap-4">
               {escrows.map(escrow => (
                 <EscrowCard key={escrow.id} {...escrow} />

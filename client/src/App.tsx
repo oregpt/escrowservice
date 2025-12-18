@@ -10,6 +10,9 @@ import EscrowDetail from "@/pages/escrow-detail";
 import EscrowList from "@/pages/escrow-list";
 import AccountPage from "@/pages/account";
 import OrganizationPage from "@/pages/organization";
+import SettingsPage from "@/pages/settings";
+import ServiceTypesPage from "@/pages/admin/service-types";
+import AdminOrganizationsPage from "@/pages/admin/organizations";
 
 function Router() {
   return (
@@ -19,7 +22,13 @@ function Router() {
       <Route path="/escrow/new" component={EscrowNew} />
       <Route path="/escrow/:id" component={EscrowDetail} />
       <Route path="/account" component={AccountPage} />
+      <Route path="/settings" component={SettingsPage} />
       <Route path="/org/:id" component={OrganizationPage} />
+      
+      {/* Admin Routes */}
+      <Route path="/admin/service-types" component={ServiceTypesPage} />
+      <Route path="/admin/organizations" component={AdminOrganizationsPage} />
+      
       <Route component={NotFound} />
     </Switch>
   );
