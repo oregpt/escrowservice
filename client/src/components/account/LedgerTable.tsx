@@ -7,43 +7,31 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import type { LedgerEntry } from "@/lib/api";
 
-const transactions = [
-  {
-    id: "tx_1",
-    date: "Dec 18, 2025",
-    description: "Deposit from Stripe",
-    amount: 1000.00,
-    type: "credit",
-    status: "completed"
-  },
-  {
-    id: "tx_2",
-    date: "Dec 18, 2025",
-    description: "Escrow Funding #esc_12345678",
-    amount: -100.00,
-    type: "debit",
-    status: "completed"
-  },
-  {
-    id: "tx_3",
-    date: "Dec 15, 2025",
-    description: "Deposit from Wire Transfer",
-    amount: 500.00,
-    type: "credit",
-    status: "completed"
-  },
-  {
-    id: "tx_4",
-    date: "Dec 10, 2025",
-    description: "Withdrawal to Bank Account",
-    amount: -150.00,
-    type: "debit",
-    status: "processing"
+interface LedgerTableProps {
+  entries?: LedgerEntry[];
+}
+
+const ENTRY_TYPE_LABELS: Record<string, string> = {
+  DEPOSIT: 'Deposit',
+  WITHDRAW: 'Withdrawal',
+  ESCROW_LOCK: 'Escrow Lock',
+  ESCROW_RELEASE: 'Escrow Release',
+  ESCROW_RECEIVE: 'Escrow Received',
+  PLATFORM_FEE: 'Platform Fee',
+  REFUND: 'Refund',
+};
+
+export function LedgerTable({ entries = [] }: LedgerTableProps) {
+  if (entries.length === 0) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        No transactions yet
+      </div>
+    );
   }
-];
 
-export function LedgerTable() {
   return (
     <div className="rounded-md border">
       <Table>
@@ -51,26 +39,46 @@ export function LedgerTable() {
           <TableRow>
             <TableHead>Date</TableHead>
             <TableHead>Description</TableHead>
-            <TableHead>Status</TableHead>
+            <TableHead>Type</TableHead>
             <TableHead className="text-right">Amount</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {transactions.map((tx) => (
-            <TableRow key={tx.id}>
-              <TableCell className="font-medium">{tx.date}</TableCell>
-              <TableCell>{tx.description}</TableCell>
-              <TableCell>
-                <Badge variant={tx.status === 'completed' ? 'outline' : 'secondary'} className="capitalize">
-                  {tx.status}
-                </Badge>
-              </TableCell>
-              <TableCell className={`text-right font-mono ${tx.type === 'credit' ? 'text-emerald-600' : ''}`}>
-                {tx.type === 'credit' ? '+' : ''}
-                ${Math.abs(tx.amount).toFixed(2)}
-              </TableCell>
-            </TableRow>
-          ))}
+          {entries.map((entry) => {
+            const isCredit = entry.amount > 0;
+            const typeLabel = ENTRY_TYPE_LABELS[entry.entryType] || entry.entryType;
+
+            return (
+              <TableRow key={entry.id}>
+                <TableCell className="font-medium">
+                  {new Date(entry.createdAt).toLocaleDateString()}
+                </TableCell>
+                <TableCell>
+                  {entry.description || typeLabel}
+                  {entry.referenceId && (
+                    <span className="text-xs text-muted-foreground ml-2 font-mono">
+                      #{entry.referenceId.slice(0, 8)}
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <Badge
+                    variant="outline"
+                    className={`capitalize ${
+                      entry.bucket === 'in_contract'
+                        ? 'border-amber-200 bg-amber-50 text-amber-700'
+                        : ''
+                    }`}
+                  >
+                    {entry.bucket === 'in_contract' ? 'In Contract' : 'Available'}
+                  </Badge>
+                </TableCell>
+                <TableCell className={`text-right font-mono ${isCredit ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {isCredit ? '+' : ''}${Math.abs(entry.amount).toFixed(2)}
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </div>
