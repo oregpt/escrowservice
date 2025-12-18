@@ -7,6 +7,7 @@ import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import EscrowNew from "@/pages/escrow-new";
 import EscrowDetail from "@/pages/escrow-detail";
+import EscrowList from "@/pages/escrow-list";
 import AccountPage from "@/pages/account";
 import OrganizationPage from "@/pages/organization";
 
@@ -14,6 +15,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
+      <Route path="/escrow" component={EscrowList} />
       <Route path="/escrow/new" component={EscrowNew} />
       <Route path="/escrow/:id" component={EscrowDetail} />
       <Route path="/account" component={AccountPage} />
