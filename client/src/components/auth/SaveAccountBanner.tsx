@@ -17,7 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 
 export function SaveAccountBanner() {
   const { toast } = useToast();
-  const { data: authData } = useAuth();
+  const { data: authData, refetch: refetchAuth } = useAuth();
   const convertAccount = useConvertAccount();
   const login = useLogin();
   const register = useRegister();
@@ -45,6 +45,11 @@ export function SaveAccountBanner() {
       return;
     }
 
+    if (!email.trim()) {
+      setError('Email is required');
+      return;
+    }
+
     if (password.length < 6) {
       setError('Password must be at least 6 characters');
       return;
@@ -54,10 +59,11 @@ export function SaveAccountBanner() {
       await convertAccount.mutateAsync({
         username: username.trim(),
         password,
-        email: email.trim() || undefined,
+        email: email.trim(),
         displayName: displayName.trim() || undefined,
       });
-
+      // Force immediate refetch of auth data
+      await refetchAuth();
       toast({
         title: 'Account saved!',
         description: 'Your progress has been saved. You can now log in anytime.',
@@ -79,6 +85,8 @@ export function SaveAccountBanner() {
 
     try {
       await login.mutateAsync({ username: username.trim(), password });
+      // Force immediate refetch of auth data
+      await refetchAuth();
       toast({
         title: 'Welcome back!',
         description: 'You have been logged in successfully.',
@@ -162,7 +170,7 @@ export function SaveAccountBanner() {
               {mode === 'save' && (
                 <>
                   <div className="space-y-2">
-                    <Label htmlFor="email">Email (optional)</Label>
+                    <Label htmlFor="email">Email</Label>
                     <Input
                       id="email"
                       type="email"
@@ -170,6 +178,7 @@ export function SaveAccountBanner() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       disabled={isLoading}
+                      required
                     />
                   </div>
 

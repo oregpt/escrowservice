@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   auth,
   accounts,
+  payments,
   escrows,
   settings,
   organizations,
@@ -14,6 +15,7 @@ import {
   type AccountWithTotals,
   type Escrow,
   type EscrowWithParties,
+  type EscrowMessage,
   type ProviderSettings,
   type ServiceType,
   type Organization,
@@ -22,6 +24,9 @@ import {
   type AdminUser,
   type AdminOrganization,
   type AdminEscrow,
+  type PaymentProviderInfo,
+  type PaymentProviderType,
+  type Payment,
 } from '@/lib/api';
 
 // ===== AUTH HOOKS =====
@@ -171,6 +176,77 @@ export function useCreateDeposit() {
   });
 }
 
+// ===== PAYMENT HOOKS (Modular Payment System) =====
+
+export function usePaymentProviders() {
+  return useQuery({
+    queryKey: ['payments', 'providers'],
+    queryFn: async () => {
+      const res = await payments.getProviders();
+      return res.success ? res.data : [];
+    },
+    staleTime: 1000 * 60 * 5, // 5 minutes - providers rarely change
+  });
+}
+
+export function useInitiatePayment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: {
+      provider: PaymentProviderType;
+      amount: number;
+      currency?: string;
+      escrowId?: string;
+      metadata?: Record<string, any>;
+    }) => {
+      const res = await payments.initiate(data);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+    },
+  });
+}
+
+export function usePayment(id: string) {
+  return useQuery({
+    queryKey: ['payments', id],
+    queryFn: async () => {
+      const res = await payments.getById(id);
+      return res.success ? res.data : null;
+    },
+    enabled: !!id,
+  });
+}
+
+export function usePaymentHistory(limit = 20, offset = 0) {
+  return useQuery({
+    queryKey: ['payments', 'history', { limit, offset }],
+    queryFn: async () => {
+      const res = await payments.getHistory(limit, offset);
+      return res.success ? res.data : [];
+    },
+  });
+}
+
+export function useVerifyPayment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await payments.verify(id);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['account'] });
+    },
+  });
+}
+
 // ===== ESCROW HOOKS =====
 
 export function useEscrows(status?: string) {
@@ -223,6 +299,32 @@ export function useEscrowAttachments(id: string) {
       return res.success ? res.data : [];
     },
     enabled: !!id,
+  });
+}
+
+export function useEscrowMessages(id: string) {
+  return useQuery({
+    queryKey: ['escrows', id, 'messages'],
+    queryFn: async () => {
+      const res = await escrows.getMessages(id);
+      return res.success ? res.data : [];
+    },
+    enabled: !!id,
+  });
+}
+
+export function useAddMessage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ escrowId, message }: { escrowId: string; message: string }) => {
+      const res = await escrows.addMessage(escrowId, message);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: (_, { escrowId }) => {
+      queryClient.invalidateQueries({ queryKey: ['escrows', escrowId, 'messages'] });
+    },
   });
 }
 

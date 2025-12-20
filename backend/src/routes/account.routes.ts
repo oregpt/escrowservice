@@ -6,11 +6,11 @@ import type { ApiResponse, AccountWithTotals, LedgerEntry } from '../types/index
 
 const router = Router();
 
-// Get current user's account
+// Get current user's account (via their organization)
 router.get('/me', requireAuth, async (req, res) => {
   try {
     const userId = req.userId!;
-    const account = await accountService.getOrCreateUserAccount(userId);
+    const account = await accountService.getOrCreateAccountForUser(userId);
 
     const response: ApiResponse<AccountWithTotals> = {
       success: true,
@@ -26,14 +26,14 @@ router.get('/me', requireAuth, async (req, res) => {
   }
 });
 
-// Get account ledger entries
+// Get account ledger entries (via user's organization)
 router.get('/me/ledger', requireAuth, async (req, res) => {
   try {
     const userId = req.userId!;
     const limit = parseInt(req.query.limit as string) || 50;
     const offset = parseInt(req.query.offset as string) || 0;
 
-    const account = await accountService.getOrCreateUserAccount(userId);
+    const account = await accountService.getOrCreateAccountForUser(userId);
     const entries = await accountService.getLedgerEntries(account.id, limit, offset);
 
     const response: ApiResponse<{ entries: LedgerEntry[]; account: AccountWithTotals }> = {

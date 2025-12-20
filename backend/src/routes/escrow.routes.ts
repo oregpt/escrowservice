@@ -3,7 +3,7 @@ import { escrowService } from '../services/escrow.service.js';
 import { attachmentService } from '../services/attachment.service.js';
 import { cantonTrafficService } from '../services/canton-traffic.service.js';
 import { requireAuth, optionalAuth } from '../middleware/auth.middleware.js';
-import type { ApiResponse, Escrow, EscrowWithParties, EscrowEvent, CreateEscrowRequest } from '../types/index.js';
+import type { ApiResponse, Escrow, EscrowWithParties, EscrowEvent, EscrowMessage, CreateEscrowRequest } from '../types/index.js';
 
 const router = Router();
 
@@ -272,6 +272,60 @@ router.get('/:id/attachments', optionalAuth, async (req, res) => {
       error: error instanceof Error ? error.message : 'Unknown error',
     };
     res.status(500).json(response);
+  }
+});
+
+// ============================================
+// ESCROW MESSAGES
+// ============================================
+
+// Get messages for an escrow
+router.get('/:id/messages', optionalAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const messages = await escrowService.getMessages(id);
+
+    const response: ApiResponse<EscrowMessage[]> = {
+      success: true,
+      data: messages,
+    };
+    res.json(response);
+  } catch (error) {
+    const response: ApiResponse<null> = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+    res.status(500).json(response);
+  }
+});
+
+// Add a message to an escrow
+router.post('/:id/messages', requireAuth, async (req, res) => {
+  try {
+    const userId = req.userId!;
+    const { id } = req.params;
+    const { message } = req.body;
+
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Message is required',
+      });
+    }
+
+    const newMessage = await escrowService.addMessage(id, userId, message.trim());
+
+    const response: ApiResponse<EscrowMessage> = {
+      success: true,
+      data: newMessage,
+    };
+    res.status(201).json(response);
+  } catch (error) {
+    const response: ApiResponse<null> = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+    res.status(400).json(response);
   }
 });
 

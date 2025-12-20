@@ -17,7 +17,7 @@ export function AccountSummary({
     <Card className="shadow-sm">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground tracking-wide uppercase">
-          Your Account
+          Balances
         </CardTitle>
       </CardHeader>
       <CardContent>

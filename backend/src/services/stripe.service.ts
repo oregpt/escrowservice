@@ -114,8 +114,8 @@ export class StripeService {
         [session.payment_intent, session.id]
       );
 
-      // Get or create user account
-      const account = await accountService.getOrCreateUserAccount(userId);
+      // Get or create user's org account
+      const account = await accountService.getOrCreateAccountForUser(userId);
 
       // Deposit to account
       await accountService.deposit(

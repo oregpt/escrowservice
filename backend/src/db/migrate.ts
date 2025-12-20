@@ -104,11 +104,24 @@ CREATE TABLE IF NOT EXISTS escrows (
     service_type_id VARCHAR(50) REFERENCES service_types(id),
     party_a_user_id UUID REFERENCES users(id),
     party_b_user_id UUID REFERENCES users(id),
+    -- Counterparty details (for invites before they accept)
+    is_open BOOLEAN DEFAULT false,
+    counterparty_name VARCHAR(255),
+    counterparty_email VARCHAR(255),
+    -- Privacy level: 'public' (anyone), 'platform' (authenticated users), 'private' (parties only)
+    privacy_level VARCHAR(20) DEFAULT 'platform',
+    -- Status and amounts
     status VARCHAR(50) NOT NULL DEFAULT 'CREATED',
     amount DECIMAL(20, 8) NOT NULL,
     currency VARCHAR(10) DEFAULT 'USD',
     platform_fee DECIMAL(20, 8),
+    -- Terms and description
+    title VARCHAR(255),
+    description TEXT,
+    terms TEXT,
+    -- Service-specific data stored as JSON
     metadata JSONB,
+    -- Timestamps
     party_a_confirmed_at TIMESTAMP,
     party_b_confirmed_at TIMESTAMP,
     funded_at TIMESTAMP,
@@ -143,7 +156,7 @@ CREATE TABLE IF NOT EXISTS provider_settings (
     UNIQUE(user_id, service_type_id)
 );
 
--- Stripe Payments
+-- Stripe Payments (Legacy - kept for backwards compatibility)
 CREATE TABLE IF NOT EXISTS stripe_payments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     stripe_payment_intent_id VARCHAR(255) UNIQUE,
@@ -156,6 +169,22 @@ CREATE TABLE IF NOT EXISTS stripe_payments (
     metadata JSONB,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Payments (Provider-agnostic - supports Stripe, crypto, bank, etc.)
+CREATE TABLE IF NOT EXISTS payments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id),
+    escrow_id UUID REFERENCES escrows(id),
+    amount DECIMAL(15, 2) NOT NULL,
+    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    provider VARCHAR(30) NOT NULL,
+    external_id VARCHAR(255),
+    provider_data JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    completed_at TIMESTAMP
 );
 
 -- Canton Traffic Requests (service-specific)
@@ -205,6 +234,45 @@ CREATE TABLE IF NOT EXISTS attachment_access_log (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Escrow Messages (notes/communication between parties)
+CREATE TABLE IF NOT EXISTS escrow_messages (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    escrow_id UUID REFERENCES escrows(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id),
+    message TEXT NOT NULL,
+    is_system_message BOOLEAN DEFAULT false,
+    metadata JSONB,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Platform Settings (key-value store for platform configuration)
+CREATE TABLE IF NOT EXISTS platform_settings (
+    key VARCHAR(100) PRIMARY KEY,
+    value JSONB NOT NULL,
+    updated_by UUID REFERENCES users(id),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Tokenization Records (on-chain contract history for escrows)
+-- Each status update creates a new record as the prior contractId becomes invalid
+CREATE TABLE IF NOT EXISTS tokenization_records (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    escrow_id UUID REFERENCES escrows(id) ON DELETE CASCADE,
+    -- On-chain identifiers (from blockchain API response)
+    contract_id TEXT NOT NULL,
+    update_id TEXT,
+    "offset" BIGINT,
+    -- Tokenization platform identifiers
+    token_id TEXT,
+    tokenization_platform VARCHAR(100),
+    -- Additional metadata
+    metadata JSONB,
+    -- Status at time of tokenization
+    escrow_status VARCHAR(50),
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_org_members_org ON org_members(organization_id);
 CREATE INDEX IF NOT EXISTS idx_org_members_user ON org_members(user_id);
@@ -220,6 +288,14 @@ CREATE INDEX IF NOT EXISTS idx_attachments_status ON attachments(status);
 CREATE INDEX IF NOT EXISTS idx_attachment_access_log_attachment ON attachment_access_log(attachment_id);
 CREATE INDEX IF NOT EXISTS idx_users_session ON users(session_id);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_escrow_messages_escrow ON escrow_messages(escrow_id);
+CREATE INDEX IF NOT EXISTS idx_tokenization_records_escrow ON tokenization_records(escrow_id);
+
+-- Payments indexes
+CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id);
+CREATE INDEX IF NOT EXISTS idx_payments_provider ON payments(provider);
+CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
+CREATE INDEX IF NOT EXISTS idx_payments_external_id ON payments(external_id) WHERE external_id IS NOT NULL;
 `;
 
 // Migration for existing databases - add new columns if they don't exist
@@ -252,6 +328,172 @@ BEGIN
 
     IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_users_role') THEN
         CREATE INDEX idx_users_role ON users(role);
+    END IF;
+END $$;
+
+-- Add new columns to escrows table if they don't exist
+DO $$
+BEGIN
+    -- Add is_open column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'escrows' AND column_name = 'is_open') THEN
+        ALTER TABLE escrows ADD COLUMN is_open BOOLEAN DEFAULT false;
+    END IF;
+
+    -- Add counterparty_name column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'escrows' AND column_name = 'counterparty_name') THEN
+        ALTER TABLE escrows ADD COLUMN counterparty_name VARCHAR(255);
+    END IF;
+
+    -- Add counterparty_email column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'escrows' AND column_name = 'counterparty_email') THEN
+        ALTER TABLE escrows ADD COLUMN counterparty_email VARCHAR(255);
+    END IF;
+
+    -- Add title column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'escrows' AND column_name = 'title') THEN
+        ALTER TABLE escrows ADD COLUMN title VARCHAR(255);
+    END IF;
+
+    -- Add description column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'escrows' AND column_name = 'description') THEN
+        ALTER TABLE escrows ADD COLUMN description TEXT;
+    END IF;
+
+    -- Add terms column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'escrows' AND column_name = 'terms') THEN
+        ALTER TABLE escrows ADD COLUMN terms TEXT;
+    END IF;
+
+    -- Add privacy_level column (public, platform, private)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'escrows' AND column_name = 'privacy_level') THEN
+        ALTER TABLE escrows ADD COLUMN privacy_level VARCHAR(20) DEFAULT 'platform';
+    END IF;
+END $$;
+
+-- Create index on is_open for finding open escrows
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_escrows_is_open') THEN
+        CREATE INDEX idx_escrows_is_open ON escrows(is_open) WHERE is_open = true;
+    END IF;
+END $$;
+
+-- Add primary_org_id to users (every user must belong to an org)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'primary_org_id') THEN
+        ALTER TABLE users ADD COLUMN primary_org_id UUID REFERENCES organizations(id);
+    END IF;
+END $$;
+
+-- Add org-based columns to escrows table
+DO $$
+BEGIN
+    -- Party A org (the organization creating the escrow) - required
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'escrows' AND column_name = 'party_a_org_id') THEN
+        ALTER TABLE escrows ADD COLUMN party_a_org_id UUID REFERENCES organizations(id);
+    END IF;
+
+    -- Created by user (who created it - for audit trail)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'escrows' AND column_name = 'created_by_user_id') THEN
+        ALTER TABLE escrows ADD COLUMN created_by_user_id UUID REFERENCES users(id);
+    END IF;
+
+    -- Party B org (if counterparty is an organization)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'escrows' AND column_name = 'party_b_org_id') THEN
+        ALTER TABLE escrows ADD COLUMN party_b_org_id UUID REFERENCES organizations(id);
+    END IF;
+
+    -- Accepted by user (who accepted - for audit trail)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'escrows' AND column_name = 'accepted_by_user_id') THEN
+        ALTER TABLE escrows ADD COLUMN accepted_by_user_id UUID REFERENCES users(id);
+    END IF;
+END $$;
+
+-- Migrate existing escrows: copy party_a_user_id to created_by_user_id
+DO $$
+BEGIN
+    UPDATE escrows
+    SET created_by_user_id = party_a_user_id
+    WHERE created_by_user_id IS NULL AND party_a_user_id IS NOT NULL;
+END $$;
+
+-- Create indexes for org-based queries
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_escrows_party_a_org') THEN
+        CREATE INDEX idx_escrows_party_a_org ON escrows(party_a_org_id);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_escrows_party_b_org') THEN
+        CREATE INDEX idx_escrows_party_b_org ON escrows(party_b_org_id);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_escrows_created_by') THEN
+        CREATE INDEX idx_escrows_created_by ON escrows(created_by_user_id);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_users_primary_org') THEN
+        CREATE INDEX idx_users_primary_org ON users(primary_org_id);
+    END IF;
+END $$;
+
+-- Add arbiter columns to escrows table
+-- Arbiter is the third party who can resolve disputes (cancel or force-complete)
+-- Platform admin always retains override ability regardless of custom arbiter
+DO $$
+BEGIN
+    -- Arbiter type: 'platform_only' (default), 'organization', 'person'
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'escrows' AND column_name = 'arbiter_type') THEN
+        ALTER TABLE escrows ADD COLUMN arbiter_type VARCHAR(20) DEFAULT 'platform_only';
+    END IF;
+
+    -- Arbiter organization (if arbiter_type = 'organization')
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'escrows' AND column_name = 'arbiter_org_id') THEN
+        ALTER TABLE escrows ADD COLUMN arbiter_org_id UUID REFERENCES organizations(id);
+    END IF;
+
+    -- Arbiter user (if arbiter_type = 'person' and they've registered)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'escrows' AND column_name = 'arbiter_user_id') THEN
+        ALTER TABLE escrows ADD COLUMN arbiter_user_id UUID REFERENCES users(id);
+    END IF;
+
+    -- Arbiter email (for inviting someone before they register)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'escrows' AND column_name = 'arbiter_email') THEN
+        ALTER TABLE escrows ADD COLUMN arbiter_email VARCHAR(255);
+    END IF;
+END $$;
+
+-- Create indexes for arbiter queries
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_escrows_arbiter_org') THEN
+        CREATE INDEX idx_escrows_arbiter_org ON escrows(arbiter_org_id) WHERE arbiter_org_id IS NOT NULL;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_escrows_arbiter_user') THEN
+        CREATE INDEX idx_escrows_arbiter_user ON escrows(arbiter_user_id) WHERE arbiter_user_id IS NOT NULL;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_escrows_arbiter_email') THEN
+        CREATE INDEX idx_escrows_arbiter_email ON escrows(arbiter_email) WHERE arbiter_email IS NOT NULL;
+    END IF;
+END $$;
+
+-- Add purpose column to attachments for evidence categorization
+-- Purpose indicates what this attachment is proving or delivering
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'attachments' AND column_name = 'purpose') THEN
+        ALTER TABLE attachments ADD COLUMN purpose VARCHAR(30);
+    END IF;
+END $$;
+
+-- Create index for querying attachments by purpose
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_attachments_purpose') THEN
+        CREATE INDEX idx_attachments_purpose ON attachments(purpose) WHERE purpose IS NOT NULL;
     END IF;
 END $$;
 `;
@@ -306,7 +548,7 @@ VALUES (
     'a0000000-0000-0000-0000-000000000001',
     'admin',
     'admin@escrowservice.local',
-    '$2b$10$rQZ5Wm.xJY3JXqZ8ZQKQV.QYZ5Wm.xJY3JXqZ8ZQKQVuNvKxK6Wy', -- admin123
+    '$2b$10$MCtDhB1SN8SbdXy5yF7plO2xb5eQm4O6.KFASw3e9jM9AWn0aSVQ6', -- admin123
     'Platform Admin',
     'platform_admin',
     true
@@ -314,7 +556,8 @@ VALUES (
 ON CONFLICT (id) DO UPDATE SET
     role = 'platform_admin',
     username = 'admin',
-    display_name = 'Platform Admin';
+    display_name = 'Platform Admin',
+    password_hash = '$2b$10$MCtDhB1SN8SbdXy5yF7plO2xb5eQm4O6.KFASw3e9jM9AWn0aSVQ6';
 `;
 
 async function migrate() {

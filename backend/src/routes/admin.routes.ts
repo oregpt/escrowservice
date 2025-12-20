@@ -2,7 +2,9 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { pool } from '../db/connection.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import { userService } from '../services/user.service.js';
-import type { ApiResponse, ServiceType, PlatformStats, User } from '../types/index.js';
+import { organizationService } from '../services/organization.service.js';
+import { escrowService } from '../services/escrow.service.js';
+import type { ApiResponse, ServiceType, PlatformStats, User, Escrow } from '../types/index.js';
 
 const router = Router();
 
@@ -316,6 +318,27 @@ router.get('/organizations', requireAuth, requirePlatformAdmin, async (req, res)
   }
 });
 
+// Delete organization (platform admin only)
+router.delete('/organizations/:orgId', requireAuth, requirePlatformAdmin, async (req, res) => {
+  try {
+    const { orgId } = req.params;
+
+    await organizationService.deleteOrganization(orgId);
+
+    const response: ApiResponse<{ message: string }> = {
+      success: true,
+      data: { message: 'Organization deleted successfully' },
+    };
+    res.json(response);
+  } catch (error) {
+    const response: ApiResponse<null> = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+    res.status(400).json(response);
+  }
+});
+
 // Get all escrows (platform admin only)
 router.get('/escrows', requireAuth, requirePlatformAdmin, async (req, res) => {
   try {
@@ -526,6 +549,192 @@ router.post('/service-types', requireAuth, requirePlatformAdmin, async (req, res
       data: serviceType,
     };
     res.status(201).json(response);
+  } catch (error) {
+    const response: ApiResponse<null> = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+    res.status(500).json(response);
+  }
+});
+
+// ===============================================
+// ESCROW ADMIN/ARBITER ROUTES
+// ===============================================
+
+// Arbiter middleware - checks if user is platform admin OR designated arbiter
+const requireArbiter = async (req: Request, res: Response, next: NextFunction) => {
+  const user = (req as any).user;
+  const escrowId = req.params.id;
+
+  if (!user) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+
+  if (!escrowId) {
+    return res.status(400).json({ success: false, error: 'Escrow ID required' });
+  }
+
+  const isArbiter = await escrowService.isUserArbiter(user.id, escrowId);
+  if (!isArbiter) {
+    return res.status(403).json({
+      success: false,
+      error: 'You are not authorized to perform arbiter actions on this escrow',
+    });
+  }
+
+  next();
+};
+
+// Cancel escrow (for dispute resolution)
+// Can cancel funded escrows - refunds to Party A by default
+// Accessible by: platform admin OR designated arbiter
+router.post('/escrows/:id/cancel', requireAuth, requireArbiter, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason, refundToPartyA = true } = req.body;
+    const adminUser = (req as any).user;
+
+    if (!reason) {
+      return res.status(400).json({
+        success: false,
+        error: 'Reason is required for cancellation',
+      });
+    }
+
+    const escrow = await escrowService.adminCancelEscrow(
+      id,
+      adminUser.id,
+      reason,
+      refundToPartyA
+    );
+
+    const response: ApiResponse<Escrow> = {
+      success: true,
+      data: escrow,
+    };
+    res.json(response);
+  } catch (error) {
+    const response: ApiResponse<null> = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+    res.status(500).json(response);
+  }
+});
+
+// Force complete escrow (release funds to Party B)
+// For when Party A is unresponsive but Party B delivered
+// Accessible by: platform admin OR designated arbiter
+router.post('/escrows/:id/force-complete', requireAuth, requireArbiter, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const adminUser = (req as any).user;
+
+    if (!reason) {
+      return res.status(400).json({
+        success: false,
+        error: 'Reason is required for force completion',
+      });
+    }
+
+    const escrow = await escrowService.adminForceComplete(
+      id,
+      adminUser.id,
+      reason
+    );
+
+    const response: ApiResponse<Escrow> = {
+      success: true,
+      data: escrow,
+    };
+    res.json(response);
+  } catch (error) {
+    const response: ApiResponse<null> = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+    res.status(500).json(response);
+  }
+});
+
+// Check if current user is arbiter for an escrow
+router.get('/escrows/:id/is-arbiter', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = (req as any).user;
+
+    const isArbiter = await escrowService.isUserArbiter(user.id, id);
+
+    const response: ApiResponse<{ isArbiter: boolean }> = {
+      success: true,
+      data: { isArbiter },
+    };
+    res.json(response);
+  } catch (error) {
+    const response: ApiResponse<null> = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+    res.status(500).json(response);
+  }
+});
+
+// Get escrows where current user is arbiter
+router.get('/my-arbitrations', requireAuth, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const escrows = await escrowService.getEscrowsAsArbiter(user.id);
+
+    const response: ApiResponse<Escrow[]> = {
+      success: true,
+      data: escrows,
+    };
+    res.json(response);
+  } catch (error) {
+    const response: ApiResponse<null> = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+    res.status(500).json(response);
+  }
+});
+
+// Get all escrows (admin view)
+router.get('/escrows', requireAuth, requirePlatformAdmin, async (req, res) => {
+  try {
+    const { status, limit = 50, offset = 0 } = req.query;
+
+    let query = `
+      SELECT e.*,
+             st.name as service_type_name,
+             pa.display_name as party_a_name,
+             pa.email as party_a_email,
+             pb.display_name as party_b_name,
+             pb.email as party_b_email
+      FROM escrows e
+      LEFT JOIN service_types st ON e.service_type_id = st.id
+      LEFT JOIN users pa ON e.party_a_user_id = pa.id
+      LEFT JOIN users pb ON e.party_b_user_id = pb.id
+    `;
+    const params: any[] = [];
+
+    if (status) {
+      query += ` WHERE e.status = $1`;
+      params.push(status);
+    }
+
+    query += ` ORDER BY e.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    params.push(limit, offset);
+
+    const result = await pool.query(query, params);
+
+    const response: ApiResponse<any[]> = {
+      success: true,
+      data: result.rows,
+    };
+    res.json(response);
   } catch (error) {
     const response: ApiResponse<null> = {
       success: false,

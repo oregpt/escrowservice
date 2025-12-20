@@ -6,11 +6,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Building2, UserPlus, Settings, MoreHorizontal, Loader2, Plus } from "lucide-react";
+import { Building2, UserPlus, Settings, MoreHorizontal, Loader2, Plus, Lock } from "lucide-react";
 import { AccountSummary } from "@/components/account/AccountSummary";
-import { useRoute } from "wouter";
+import { useRoute, useLocation } from "wouter";
 import { useState } from "react";
-import { useOrganization, useOrgMembers, useCreateOrganization, useOrganizations } from "@/hooks/use-api";
+import { useOrganization, useOrgMembers, useCreateOrganization, useOrganizations, useAuth } from "@/hooks/use-api";
 import { organizations } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -268,12 +268,77 @@ function OrganizationDetail({ id }: { id: string }) {
   );
 }
 
+// Access denied component for non-authenticated users
+function AccessDenied({ message }: { message: string }) {
+  const [, setLocation] = useLocation();
+
+  return (
+    <Card className="max-w-md mx-auto">
+      <CardContent className="pt-6 text-center">
+        <Lock className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+        <h2 className="text-lg font-semibold">Access Denied</h2>
+        <p className="text-muted-foreground mt-2">{message}</p>
+        <Button
+          variant="outline"
+          className="mt-4"
+          onClick={() => setLocation('/')}
+        >
+          Go to Dashboard
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function OrganizationPage() {
   const [, params] = useRoute('/org/:id');
   const id = params?.id;
+  const { data: authData, isLoading: authLoading } = useAuth();
 
-  // If ID is 'new', show create form
+  const user = authData?.user;
+  const isAuthenticated = user?.isAuthenticated;
+  const isPlatformAdmin = user?.role === 'platform_admin';
+
+  // If ID is 'new', show create form (platform admin only)
   const isNew = id === 'new';
+
+  // Show loading while checking auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50/50">
+        <Header />
+        <PageContainer>
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        </PageContainer>
+      </div>
+    );
+  }
+
+  // Require authentication for all organization pages
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-50/50">
+        <Header />
+        <PageContainer>
+          <AccessDenied message="You must be signed in to access organizations." />
+        </PageContainer>
+      </div>
+    );
+  }
+
+  // Creating new organization requires platform_admin role
+  if (isNew && !isPlatformAdmin) {
+    return (
+      <div className="min-h-screen bg-slate-50/50">
+        <Header />
+        <PageContainer>
+          <AccessDenied message="Only platform administrators can create new organizations." />
+        </PageContainer>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50/50">
@@ -284,7 +349,12 @@ export default function OrganizationPage() {
         ) : id ? (
           <OrganizationDetail id={id} />
         ) : (
-          <CreateOrganizationForm />
+          // No ID provided - if platform admin, show create form, otherwise show access denied
+          isPlatformAdmin ? (
+            <CreateOrganizationForm />
+          ) : (
+            <AccessDenied message="Only platform administrators can create new organizations." />
+          )
         )}
       </PageContainer>
     </div>

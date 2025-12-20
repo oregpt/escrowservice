@@ -126,6 +126,7 @@ export const accounts = {
       `/accounts/me/ledger?limit=${limit}&offset=${offset}`
     ),
 
+  // Legacy deposit method (kept for backwards compatibility)
   createDeposit: (amount: number, currency = 'usd') =>
     apiFetch<{ sessionId: string; checkoutUrl: string }>('/accounts/deposit', {
       method: 'POST',
@@ -133,6 +134,37 @@ export const accounts = {
     }),
 
   getPayments: (limit = 20) => apiFetch<StripePayment[]>(`/accounts/payments?limit=${limit}`),
+};
+
+// ===== PAYMENTS (Modular - supports multiple providers) =====
+export const payments = {
+  // Get available payment providers
+  getProviders: () => apiFetch<PaymentProviderInfo[]>('/payments/providers'),
+
+  // Initiate a payment with a specific provider
+  initiate: (data: {
+    provider: PaymentProviderType;
+    amount: number;
+    currency?: string;
+    escrowId?: string;
+    metadata?: Record<string, any>;
+  }) =>
+    apiFetch<PaymentSession>('/payments/initiate', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Get payment by ID
+  getById: (id: string) => apiFetch<Payment>(`/payments/${id}`),
+
+  // Verify payment status
+  verify: (id: string) => apiFetch<{ id: string; status: PaymentStatus; amount: number; currency: string }>(
+    `/payments/${id}/verify`
+  ),
+
+  // Get payment history
+  getHistory: (limit = 20, offset = 0) =>
+    apiFetch<Payment[]>(`/payments?limit=${limit}&offset=${offset}`),
 };
 
 // ===== ESCROWS =====
@@ -171,6 +203,15 @@ export const escrows = {
   getEvents: (id: string) => apiFetch<EscrowEvent[]>(`/escrows/${id}/events`),
 
   getAttachments: (id: string) => apiFetch<Attachment[]>(`/escrows/${id}/attachments`),
+
+  // Messages
+  getMessages: (id: string) => apiFetch<EscrowMessage[]>(`/escrows/${id}/messages`),
+
+  addMessage: (id: string, message: string) =>
+    apiFetch<EscrowMessage>(`/escrows/${id}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    }),
 };
 
 // ===== ATTACHMENTS =====
@@ -264,6 +305,30 @@ export const organizations = {
     }),
 
   getAccount: (orgId: string) => apiFetch<AccountWithTotals>(`/organizations/${orgId}/account`),
+};
+
+// ===== ARBITER =====
+export const arbiter = {
+  // Check if current user is arbiter for an escrow
+  isArbiter: (escrowId: string) =>
+    apiFetch<{ isArbiter: boolean }>(`/admin/escrows/${escrowId}/is-arbiter`),
+
+  // Get escrows where current user is arbiter
+  getMyArbitrations: () => apiFetch<Escrow[]>('/admin/my-arbitrations'),
+
+  // Arbiter cancel escrow (refund to Party A)
+  cancelEscrow: (escrowId: string, reason: string, refundToPartyA = true) =>
+    apiFetch<Escrow>(`/admin/escrows/${escrowId}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason, refundToPartyA }),
+    }),
+
+  // Arbiter force complete escrow (release to Party B)
+  forceComplete: (escrowId: string, reason: string) =>
+    apiFetch<Escrow>(`/admin/escrows/${escrowId}/force-complete`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
 };
 
 // ===== ADMIN =====
@@ -429,9 +494,24 @@ export type EscrowStatus =
   | 'EXPIRED'
   | 'DISPUTED';
 
+export type PrivacyLevel = 'public' | 'platform' | 'private';
+
+export type ArbiterType = 'platform_only' | 'platform_ai' | 'organization' | 'person';
+
 export type ServiceTypeId = 'TRAFFIC_BUY' | 'DOCUMENT_DELIVERY' | 'API_KEY_EXCHANGE' | 'CUSTOM';
 
 export type UserRole = 'user' | 'provider' | 'admin' | 'platform_admin';
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl?: string;
+  billingEmail?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface User {
   id: string;
@@ -444,6 +524,7 @@ export interface User {
   isAuthenticated: boolean;
   isProvider: boolean;
   sessionId?: string;
+  primaryOrgId?: string;  // Every user belongs to an org
   createdAt: string;
   updatedAt: string;
 }
@@ -476,13 +557,37 @@ export interface LedgerEntry {
 export interface Escrow {
   id: string;
   serviceTypeId: ServiceTypeId;
-  partyAUserId: string;
-  partyBUserId?: string;
+  // Organization-based ownership (new model)
+  partyAOrgId: string;              // Organization creating the escrow (required)
+  createdByUserId: string;          // User who created it (for audit)
+  partyBOrgId?: string;             // Counterparty org (if assigned to org)
+  partyBUserId?: string;            // Counterparty user (if assigned to specific user)
+  acceptedByUserId?: string;        // User who accepted (for audit)
+  // Legacy field
+  partyAUserId?: string;            // @deprecated - use createdByUserId
+  // Counterparty details
+  isOpen: boolean;
+  counterpartyName?: string;
+  counterpartyEmail?: string;
+  // Privacy level
+  privacyLevel: PrivacyLevel;
+  // Arbiter (dispute resolution)
+  arbiterType: ArbiterType;         // Who can resolve disputes
+  arbiterOrgId?: string;            // If arbiter is an organization
+  arbiterUserId?: string;           // If arbiter is a specific user
+  arbiterEmail?: string;            // Email for arbiter invite (before they register)
+  // Status and amounts
   status: EscrowStatus;
   amount: number;
   currency: string;
   platformFee: number;
+  // Terms
+  title?: string;
+  description?: string;
+  terms?: string;
+  // Service-specific data
   metadata?: Record<string, any>;
+  // Timestamps
   partyAConfirmedAt?: string;
   partyBConfirmedAt?: string;
   fundedAt?: string;
@@ -494,10 +599,18 @@ export interface Escrow {
 }
 
 export interface EscrowWithParties extends Escrow {
-  partyA: User;
-  partyB?: User;
+  partyAOrg: Organization;          // The organization that created the escrow
+  createdBy: User;                  // User who created it
+  partyBOrg?: Organization;         // Counterparty org (if assigned to org)
+  partyB?: User;                    // Counterparty user (if assigned to specific user)
+  acceptedBy?: User;                // User who accepted
   serviceType: ServiceType;
   attachments: Attachment[];
+  // Arbiter details (populated)
+  arbiterOrg?: Organization;        // If arbiter is an organization
+  arbiter?: User;                   // If arbiter is a specific user
+  // Legacy - kept for backwards compatibility
+  partyA?: User;                    // @deprecated
 }
 
 export interface EscrowEvent {
@@ -507,6 +620,22 @@ export interface EscrowEvent {
   actorUserId?: string;
   details?: Record<string, any>;
   createdAt: string;
+}
+
+export interface EscrowMessage {
+  id: string;
+  escrowId: string;
+  userId: string;
+  message: string;
+  isSystemMessage: boolean;
+  metadata?: Record<string, any>;
+  createdAt: string;
+  user?: {
+    id: string;
+    displayName?: string;
+    username?: string;
+    avatarUrl?: string;
+  };
 }
 
 export interface ServiceType {
@@ -536,11 +665,35 @@ export interface ProviderSettings {
   updatedAt: string;
 }
 
+// Purpose categorizes what an attachment is for
+export type AttachmentPurpose =
+  | 'evidence_a'      // Party A proving they did their part
+  | 'evidence_b'      // Party B proving they did their part
+  | 'deliverable_a'   // The actual item Party A is delivering (e.g., payment receipt)
+  | 'deliverable_b'   // The actual item Party B is delivering (e.g., document, API key)
+  | 'general';        // General attachment (notes, context, etc.)
+
+// Obligation Tracking
+// Each escrow has obligations for Party A and Party B that are auto-generated from service type
+export type ObligationStatus = 'pending' | 'completed' | 'disputed';
+export type ObligationParty = 'A' | 'B';
+
+export interface Obligation {
+  id: string;                          // e.g., 'obl_a' or 'obl_b'
+  party: ObligationParty;              // Which party owns this obligation
+  description: string;                 // Human-readable (e.g., "Pay $500.00")
+  type: string;                        // From service_type (e.g., "FIAT_USD", "CANTON_TRAFFIC")
+  status: ObligationStatus;
+  completedAt?: string;                // ISO timestamp when completed
+  evidenceAttachmentIds?: string[];    // Attachments proving completion
+}
+
 export interface Attachment {
   id: string;
   escrowId: string;
   uploadedByUserId: string;
   attachmentType: 'DOCUMENT' | 'IMAGE' | 'TEXT' | 'ARCHIVE' | 'LINK';
+  purpose?: AttachmentPurpose;  // What this attachment is proving or delivering
   filename: string;
   originalFilename?: string;
   mimeType?: string;
@@ -587,10 +740,87 @@ export interface StripePayment {
   updatedAt: string;
 }
 
+// ===== PAYMENT PROVIDER TYPES =====
+export type PaymentProviderType = 'stripe' | 'crypto' | 'bank' | string;
+export type PaymentStatus = 'pending' | 'processing' | 'succeeded' | 'failed' | 'canceled' | 'expired';
+
+export interface PaymentProviderInfo {
+  type: PaymentProviderType;
+  name: string;
+  description: string;
+  icon?: string;
+  enabled: boolean;
+  comingSoon?: boolean;
+  minAmount?: number;
+  maxAmount?: number;
+  supportedCurrencies?: string[];
+}
+
+export interface PaymentSession {
+  id: string;
+  provider: PaymentProviderType;
+  externalId?: string;
+  status: PaymentStatus;
+  amount: number;
+  currency: string;
+  redirectUrl?: string;
+  expiresAt?: string;
+  metadata: Record<string, any>;
+}
+
+export interface Payment {
+  id: string;
+  userId: string;
+  escrowId?: string;
+  amount: number;
+  currency: string;
+  status: PaymentStatus;
+  provider: PaymentProviderType;
+  externalId?: string;
+  providerData: Record<string, any>;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+}
+
 export interface CreateEscrowRequest {
   serviceTypeId: ServiceTypeId;
   amount: number;
   currency?: string;
+  // Counterparty - one of: open, org, or specific user
+  isOpen?: boolean;                   // Anyone can accept
+  counterpartyOrgId?: string;         // Assign to entire org (any member can accept)
+  counterpartyUserId?: string;        // Assign to specific user
+  counterpartyName?: string;          // Display name for invites
+  counterpartyEmail?: string;         // Email for invites
+  // Privacy
+  privacyLevel?: PrivacyLevel;
+  // Arbiter (dispute resolution)
+  arbiterType?: ArbiterType;          // 'platform_only' (default), 'organization', 'person'
+  arbiterOrgId?: string;              // If arbiter is an organization
+  arbiterEmail?: string;              // If arbiter is a specific person (email)
+  // Terms
+  title?: string;
+  description?: string;
+  terms?: string;
+  // Service-specific data
   metadata?: Record<string, any>;
   expiresInDays?: number;
+}
+
+// Tokenization Records (on-chain contract history)
+export interface TokenizationRecord {
+  id: string;
+  escrowId: string;
+  // On-chain identifiers
+  contractId: string;
+  updateId?: string;
+  offset?: number;
+  // Tokenization platform identifiers
+  tokenId?: string;
+  tokenizationPlatform?: string;
+  // Additional data
+  metadata?: Record<string, any>;
+  escrowStatus?: EscrowStatus;
+  createdAt: string;
 }

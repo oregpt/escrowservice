@@ -3,11 +3,11 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 interface PartyInfoProps {
-  role: 'Buyer' | 'Seller' | 'Mediator';
+  role: 'Originator' | 'Counterparty' | 'Mediator';
   name: string;
   email?: string;
   isCurrentUser?: boolean;
-  status?: 'waiting' | 'ready' | 'action_required';
+  status?: 'waiting' | 'ready' | 'action_required' | 'confirmed';
   className?: string;
 }
 
@@ -35,6 +35,9 @@ export function PartyInfo({ role, name, email, isCurrentUser, status, className 
       )}
       {status === 'ready' && (
         <Badge variant="outline" className="text-emerald-600 border-emerald-200 bg-emerald-50">Ready</Badge>
+      )}
+      {status === 'confirmed' && (
+        <Badge variant="outline" className="text-emerald-600 border-emerald-200 bg-emerald-50">Confirmed</Badge>
       )}
     </div>
   );

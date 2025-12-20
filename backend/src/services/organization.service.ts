@@ -35,8 +35,8 @@ export class OrganizationService {
         [org.id, creatorUserId]
       );
 
-      // Create organization account
-      await accountService.createOrgAccount(org.id);
+      // Create organization account (pass transaction client)
+      await accountService.createOrgAccount(org.id, 'USD', client);
 
       return org;
     });
@@ -283,6 +283,60 @@ export class OrganizationService {
       `UPDATE organizations SET is_active = false, updated_at = NOW() WHERE id = $1`,
       [orgId]
     );
+  }
+
+  // Delete organization (platform admin only)
+  async deleteOrganization(orgId: string): Promise<void> {
+    return withTransaction(async (client) => {
+      // Check for active escrows
+      const escrowCheck = await client.query(
+        `SELECT COUNT(*) as count FROM escrows
+         WHERE (party_a_org_id = $1 OR party_b_org_id = $1)
+         AND status NOT IN ('COMPLETED', 'CANCELED', 'EXPIRED')`,
+        [orgId]
+      );
+
+      if (parseInt(escrowCheck.rows[0].count) > 0) {
+        throw new Error('Cannot delete organization with active escrows. Please complete or cancel all escrows first.');
+      }
+
+      // Check account balance
+      const accountCheck = await client.query(
+        `SELECT available_balance, in_contract_balance FROM accounts WHERE organization_id = $1`,
+        [orgId]
+      );
+
+      if (accountCheck.rows.length > 0) {
+        const balance = parseFloat(accountCheck.rows[0].available_balance) + parseFloat(accountCheck.rows[0].in_contract_balance);
+        if (balance > 0) {
+          throw new Error('Cannot delete organization with remaining balance. Please withdraw all funds first.');
+        }
+      }
+
+      // Clear primary_org_id for users who have this org as primary
+      await client.query(
+        `UPDATE users SET primary_org_id = NULL WHERE primary_org_id = $1`,
+        [orgId]
+      );
+
+      // Delete org members
+      await client.query(
+        `DELETE FROM org_members WHERE organization_id = $1`,
+        [orgId]
+      );
+
+      // Delete org account
+      await client.query(
+        `DELETE FROM accounts WHERE organization_id = $1`,
+        [orgId]
+      );
+
+      // Delete the organization
+      await client.query(
+        `DELETE FROM organizations WHERE id = $1`,
+        [orgId]
+      );
+    });
   }
 
   // Check if user has permission

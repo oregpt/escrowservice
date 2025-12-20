@@ -60,8 +60,10 @@ export class AccountService {
   }
 
   // Create account for organization
-  async createOrgAccount(orgId: string, currency: string = 'USD'): Promise<Account> {
-    const result = await pool.query(
+  // Accepts optional transaction client for use within transactions
+  async createOrgAccount(orgId: string, currency: string = 'USD', client?: any): Promise<Account> {
+    const queryRunner = client || pool;
+    const result = await queryRunner.query(
       `INSERT INTO accounts (organization_id, currency)
        VALUES ($1, $2)
        RETURNING *`,
@@ -71,7 +73,7 @@ export class AccountService {
     return this.mapRowToAccount(result.rows[0]);
   }
 
-  // Get or create user account
+  // Get or create user account (DEPRECATED - use getAccountForUser instead)
   async getOrCreateUserAccount(userId: string): Promise<AccountWithTotals> {
     let account = await this.getAccountByUserId(userId);
     if (!account) {
@@ -80,6 +82,61 @@ export class AccountService {
         ...created,
         totalBalance: 0,
         ownerType: 'user',
+      };
+    }
+    return account;
+  }
+
+  // Get account for user via their organization (new org-based model)
+  // Users don't have personal accounts - they use their org's account
+  async getAccountForUser(userId: string): Promise<AccountWithTotals | null> {
+    // Get user's primary org
+    const userResult = await pool.query(
+      `SELECT primary_org_id FROM users WHERE id = $1`,
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return null;
+    }
+
+    const primaryOrgId = userResult.rows[0].primary_org_id;
+    if (!primaryOrgId) {
+      // Fallback to legacy user account if no org
+      return this.getAccountByUserId(userId);
+    }
+
+    // Get org account
+    return this.getAccountByOrgId(primaryOrgId);
+  }
+
+  // Get or create account for user's org
+  async getOrCreateAccountForUser(userId: string): Promise<AccountWithTotals> {
+    // Get user's primary org
+    const userResult = await pool.query(
+      `SELECT primary_org_id FROM users WHERE id = $1`,
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      throw new Error('User not found');
+    }
+
+    const primaryOrgId = userResult.rows[0].primary_org_id;
+
+    if (!primaryOrgId) {
+      // Fallback to legacy user account if no org
+      return this.getOrCreateUserAccount(userId);
+    }
+
+    // Get or create org account
+    let account = await this.getAccountByOrgId(primaryOrgId);
+    if (!account) {
+      const created = await this.createOrgAccount(primaryOrgId);
+      account = {
+        ...created,
+        totalBalance: 0,
+        ownerType: 'organization',
       };
     }
     return account;

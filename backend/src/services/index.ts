@@ -6,3 +6,24 @@ export { organizationService, OrganizationService } from './organization.service
 export { providerSettingsService, ProviderSettingsService } from './provider-settings.service.js';
 export { stripeService, StripeService } from './stripe.service.js';
 export { userService, UserService } from './user.service.js';
+
+// SSH Tunnel & Proxied HTTP
+export {
+  startTunnel,
+  stopTunnel,
+  reconnectTunnel,
+  isTunnelEnabled,
+  isTunnelConnected,
+  getTunnelStatus,
+  getProxyUrl,
+} from './ssh-tunnel.js';
+
+export {
+  proxiedRequest,
+  proxiedGet,
+  proxiedPost,
+  proxiedPut,
+  proxiedPatch,
+  proxiedDelete,
+  proxiedRequestWithRetry,
+} from './proxied-http.js';

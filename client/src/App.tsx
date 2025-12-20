@@ -14,9 +14,12 @@ import EscrowList from "@/pages/escrow-list";
 import AccountPage from "@/pages/account";
 import OrganizationPage from "@/pages/organization";
 import SettingsPage from "@/pages/settings";
+import PaymentSuccessPage from "@/pages/payment-success";
+import PaymentCancelPage from "@/pages/payment-cancel";
 import ServiceTypesPage from "@/pages/admin/service-types";
 import AdminOrganizationsPage from "@/pages/admin/organizations";
 import AdminDashboard from "@/pages/admin/dashboard";
+import AdminSettingsPage from "@/pages/admin/settings";
 
 function Router() {
   return (
@@ -28,11 +31,14 @@ function Router() {
       <Route path="/account" component={AccountPage} />
       <Route path="/settings" component={SettingsPage} />
       <Route path="/org/:id" component={OrganizationPage} />
+      <Route path="/payment/success" component={PaymentSuccessPage} />
+      <Route path="/payment/cancel" component={PaymentCancelPage} />
 
       {/* Admin Routes */}
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/admin/service-types" component={ServiceTypesPage} />
       <Route path="/admin/organizations" component={AdminOrganizationsPage} />
+      <Route path="/admin/settings" component={AdminSettingsPage} />
 
       <Route component={NotFound} />
     </Switch>

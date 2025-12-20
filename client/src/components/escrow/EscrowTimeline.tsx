@@ -46,25 +46,30 @@ export function EscrowTimeline({ status, createdAt }: EscrowTimelineProps) {
 
           return (
             <div key={step.id} className="flex flex-col items-center gap-2">
-              <div 
+              <div
                 className={cn(
                   "w-8 h-8 rounded-full flex items-center justify-center border-2 transition-colors duration-300 bg-white",
-                  isCompleted ? "border-emerald-500 text-emerald-500" : "border-slate-200 text-slate-300",
-                  isCurrent && "ring-4 ring-emerald-500/20"
+                  // Completed steps: green
+                  index < currentIndex && "border-emerald-500 text-emerald-500",
+                  // Current step: blue (in progress)
+                  isCurrent && "border-blue-500 text-blue-500 ring-4 ring-blue-500/20",
+                  // Future steps: gray
+                  index > currentIndex && "border-slate-200 text-slate-300"
                 )}
               >
                 {index < currentIndex ? (
                   <Check className="w-4 h-4" strokeWidth={3} />
                 ) : isCurrent ? (
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
                 ) : (
                   <Circle className="w-4 h-4 fill-transparent" />
                 )}
               </div>
               <span className={cn(
                 "text-xs font-medium transition-colors",
-                isCompleted ? "text-foreground" : "text-muted-foreground",
-                isCurrent && "text-emerald-600 font-bold"
+                index < currentIndex && "text-foreground",
+                isCurrent && "text-blue-600 font-bold",
+                index > currentIndex && "text-muted-foreground"
               )}>
                 {step.label}
               </span>

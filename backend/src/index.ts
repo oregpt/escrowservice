@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { apiRoutes, webhookRoutes } from './routes/index.js';
 import { rateLimit } from './middleware/auth.middleware.js';
+import { startTunnel, getTunnelStatus, reconnectTunnel, isTunnelEnabled } from './services/ssh-tunnel.js';
 
 // Load environment variables
 dotenv.config();
@@ -10,9 +11,9 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// CORS configuration
+// CORS configuration - allow multiple frontend ports for development
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: process.env.FRONTEND_URL || ['http://localhost:3000', 'http://localhost:5000', 'http://localhost:5001', 'http://localhost:5002', 'http://localhost:5003', 'http://localhost:5004', 'http://localhost:5173'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-ID'],
@@ -36,6 +37,33 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     version: process.env.npm_package_version || '1.0.0',
   });
+});
+
+// SSH Tunnel status endpoint
+app.get('/api/tunnel/status', (req, res) => {
+  const status = getTunnelStatus();
+  res.json({
+    success: true,
+    data: status,
+  });
+});
+
+// SSH Tunnel reconnect endpoint
+app.post('/api/tunnel/reconnect', async (req, res) => {
+  try {
+    const success = await reconnectTunnel();
+    const status = getTunnelStatus();
+    res.json({
+      success,
+      data: status,
+      message: success ? 'Tunnel reconnected successfully' : 'Failed to reconnect tunnel',
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
 });
 
 // API routes
@@ -127,20 +155,49 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
   });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`
+// Initialize server with tunnel
+async function initializeServer() {
+  // Start SSH tunnel for IP-whitelisted API calls (only if enabled)
+  if (isTunnelEnabled()) {
+    console.log('[Server] SSH tunnel is ENABLED, initializing...');
+    const tunnelConnected = await startTunnel();
+
+    if (tunnelConnected) {
+      console.log('[Server] SSH tunnel established successfully');
+    } else {
+      console.warn('[Server] SSH tunnel failed to connect - check credentials');
+    }
+  } else {
+    console.log('[Server] SSH tunnel is DISABLED (default)');
+    console.log('[Server] Set SSH_TUNNEL_ENABLED=true to enable');
+  }
+
+  // Start Express server
+  app.listen(PORT, () => {
+    const tunnelStatus = getTunnelStatus();
+    const tunnelDisplay = !tunnelStatus.enabled
+      ? 'DISABLED'
+      : tunnelStatus.connected
+        ? `CONNECTED (${tunnelStatus.host})`
+        : 'ENABLED but NOT CONNECTED';
+
+    console.log(`
 ╔═══════════════════════════════════════════════════════════╗
 ║                    ESCROW SERVICE API                     ║
 ╠═══════════════════════════════════════════════════════════╣
 ║  Server running on port ${PORT}                             ║
 ║  Environment: ${(process.env.NODE_ENV || 'development').padEnd(40)}║
+║  SSH Tunnel: ${tunnelDisplay.padEnd(43)}║
 ╚═══════════════════════════════════════════════════════════╝
 
 Endpoints:
   Health:        GET  /health
   Service Types: GET  /api/service-types
   Traffic Calc:  GET  /api/traffic/calculate?usd=60
+
+  SSH Tunnel:
+    GET  /api/tunnel/status
+    POST /api/tunnel/reconnect
 
   Auth:
     GET  /api/auth/me
@@ -179,9 +236,24 @@ Endpoints:
     GET  /api/attachments/:id/download
     POST /api/attachments/:id/escrow
 
+  Payments (Modular - Stripe, Crypto, Bank):
+    GET  /api/payments/providers
+    POST /api/payments/initiate
+    GET  /api/payments/:id
+    GET  /api/payments/:id/verify
+    GET  /api/payments
+
   Webhooks:
     POST /webhooks/stripe
+    POST /webhooks/crypto
 `);
+  });
+}
+
+// Start the server
+initializeServer().catch((error) => {
+  console.error('[Server] Failed to initialize:', error);
+  process.exit(1);
 });
 
 export default app;

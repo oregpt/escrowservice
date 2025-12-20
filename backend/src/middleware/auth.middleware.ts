@@ -78,6 +78,40 @@ export async function optionalAuth(
   }
 }
 
+// Require platform admin role
+export async function requirePlatformAdmin(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const user = req.user;
+
+    if (!user) {
+      res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+      return;
+    }
+
+    if (user.role !== 'platform_admin') {
+      res.status(403).json({
+        success: false,
+        error: 'Platform admin access required',
+      });
+      return;
+    }
+
+    next();
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Authorization error',
+    });
+  }
+}
+
 // Require specific organization permission
 export function requireOrgPermission(
   permission: 'canUseOrgAccount' | 'canCreateEscrows' | 'canManageMembers'

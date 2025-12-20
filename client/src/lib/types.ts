@@ -22,6 +22,12 @@ export interface EscrowCardProps {
   partyB: { name: string; avatar?: string } | null;
   createdAt: string;
   expiresAt?: string;
+  // New fields for open escrows
+  title?: string;
+  isOpen?: boolean;
+  canAccept?: boolean; // true if user can accept this escrow
+  onAccept?: () => void;
+  isAccepting?: boolean;
 }
 
 export interface AccountSummaryProps {

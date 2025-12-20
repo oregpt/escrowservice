@@ -1,6 +1,7 @@
 import { pool, withTransaction } from '../db/connection.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { CantonTrafficRequest, TrafficBuyMetadata } from '../types/index.js';
+import { proxiedPost, isTunnelConnected } from './proxied-http.js';
 
 const CANTON_WALLET_API_URL = process.env.CANTON_WALLET_API_URL || 'https://wallet.sv-2.us.cantoncloud.dev.global.canton.network.sync.global';
 
@@ -64,25 +65,27 @@ export class CantonTrafficService {
         throw new Error('Traffic request already executed');
       }
 
-      // Call Canton Wallet API
+      // Call Canton Wallet API via proxied HTTP (for IP whitelisting)
       const apiUrl = `${CANTON_WALLET_API_URL}/api/validator/v0/wallet/buy-traffic-requests`;
 
+      // Log tunnel status
+      console.log(`[Canton Traffic] Executing API call, tunnel connected: ${isTunnelConnected()}`);
+
       try {
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.CANTON_API_TOKEN}`,
-          },
-          body: JSON.stringify({
+        const response = await proxiedPost(
+          apiUrl,
+          {
             receiving_validator_party_id: trafficRequest.receiving_validator_party_id,
             domain_id: trafficRequest.domain_id,
             traffic_amount: trafficRequest.traffic_amount_bytes,
             tracking_id: trafficRequest.tracking_id,
-          }),
-        });
+          },
+          {
+            'Authorization': `Bearer ${process.env.CANTON_API_TOKEN}`,
+          }
+        );
 
-        const responseData = await response.json();
+        console.log(`[Canton Traffic] Response status: ${response.status}, proxied: ${response.proxied}`);
 
         // Update traffic request with response
         const updateResult = await client.query(
@@ -90,11 +93,11 @@ export class CantonTrafficService {
            SET canton_response = $1, executed_at = NOW()
            WHERE id = $2
            RETURNING *`,
-          [JSON.stringify(responseData), trafficRequestId]
+          [JSON.stringify(response.data), trafficRequestId]
         );
 
-        if (!response.ok) {
-          throw new Error(`Canton API error: ${JSON.stringify(responseData)}`);
+        if (response.status >= 400) {
+          throw new Error(`Canton API error: ${JSON.stringify(response.data)}`);
         }
 
         return this.mapRowToTrafficRequest(updateResult.rows[0]);

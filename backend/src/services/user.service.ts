@@ -1,6 +1,7 @@
-import { pool } from '../db/connection.js';
+import { pool, withTransaction } from '../db/connection.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { User, UserWithPassword, UserRole } from '../types/index.js';
+import { accountService } from './account.service.js';
 
 export class UserService {
   // Get user by ID
@@ -87,51 +88,160 @@ export class UserService {
     return this.mapRowToUser(result.rows[0]);
   }
 
-  // Create anonymous user with session
+  // Create anonymous user with session and auto-create org
   async createAnonymousUser(sessionId: string): Promise<User> {
-    const result = await pool.query(
-      `INSERT INTO users (session_id, is_authenticated, role)
-       VALUES ($1, false, 'user')
-       RETURNING *`,
-      [sessionId]
-    );
+    return withTransaction(async (client) => {
+      // Create the user first
+      const userResult = await client.query(
+        `INSERT INTO users (session_id, is_authenticated, role)
+         VALUES ($1, false, 'user')
+         RETURNING *`,
+        [sessionId]
+      );
+      const userId = userResult.rows[0].id;
 
-    return this.mapRowToUser(result.rows[0]);
+      // Create a personal organization for this user
+      const orgName = `User ${userId.slice(0, 8)}`;
+      const orgSlug = `user-${userId.slice(0, 8).toLowerCase()}`;
+      const orgResult = await client.query(
+        `INSERT INTO organizations (name, slug)
+         VALUES ($1, $2)
+         RETURNING *`,
+        [orgName, orgSlug]
+      );
+      const orgId = orgResult.rows[0].id;
+
+      // Add user as admin of their org
+      await client.query(
+        `INSERT INTO org_members (organization_id, user_id, role, can_use_org_account, can_create_escrows, can_manage_members)
+         VALUES ($1, $2, 'admin', true, true, true)`,
+        [orgId, userId]
+      );
+
+      // Set user's primary org
+      await client.query(
+        `UPDATE users SET primary_org_id = $1 WHERE id = $2`,
+        [orgId, userId]
+      );
+
+      // Create org account
+      await accountService.createOrgAccount(orgId, 'USD', client);
+
+      // Return updated user
+      const finalResult = await client.query(
+        `SELECT * FROM users WHERE id = $1`,
+        [userId]
+      );
+      return this.mapRowToUser(finalResult.rows[0]);
+    });
   }
 
-  // Create authenticated user with email (legacy/OAuth)
+  // Create authenticated user with email (legacy/OAuth) and auto-create org
   async createAuthenticatedUser(
     email: string,
     displayName?: string,
     externalId?: string,
     avatarUrl?: string
   ): Promise<User> {
-    const result = await pool.query(
-      `INSERT INTO users (email, display_name, external_id, avatar_url, is_authenticated, role)
-       VALUES ($1, $2, $3, $4, true, 'user')
-       RETURNING *`,
-      [email, displayName, externalId, avatarUrl]
-    );
+    return withTransaction(async (client) => {
+      // Create the user first
+      const userResult = await client.query(
+        `INSERT INTO users (email, display_name, external_id, avatar_url, is_authenticated, role)
+         VALUES ($1, $2, $3, $4, true, 'user')
+         RETURNING *`,
+        [email, displayName, externalId, avatarUrl]
+      );
+      const userId = userResult.rows[0].id;
 
-    return this.mapRowToUser(result.rows[0]);
+      // Create organization using email as name
+      const orgName = displayName || email.split('@')[0];
+      const orgSlug = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 50);
+      const orgResult = await client.query(
+        `INSERT INTO organizations (name, slug, billing_email)
+         VALUES ($1, $2, $3)
+         RETURNING *`,
+        [orgName, orgSlug, email]
+      );
+      const orgId = orgResult.rows[0].id;
+
+      // Add user as admin of their org
+      await client.query(
+        `INSERT INTO org_members (organization_id, user_id, role, can_use_org_account, can_create_escrows, can_manage_members)
+         VALUES ($1, $2, 'admin', true, true, true)`,
+        [orgId, userId]
+      );
+
+      // Set user's primary org
+      await client.query(
+        `UPDATE users SET primary_org_id = $1 WHERE id = $2`,
+        [orgId, userId]
+      );
+
+      // Create org account
+      await accountService.createOrgAccount(orgId, 'USD', client);
+
+      // Return updated user
+      const finalResult = await client.query(
+        `SELECT * FROM users WHERE id = $1`,
+        [userId]
+      );
+      return this.mapRowToUser(finalResult.rows[0]);
+    });
   }
 
-  // Create authenticated user with password
+  // Create authenticated user with password and auto-create org
   async createAuthenticatedUserWithPassword(
     username: string,
     passwordHash: string,
     email?: string,
     displayName?: string
   ): Promise<User> {
-    const sessionId = uuidv4();
-    const result = await pool.query(
-      `INSERT INTO users (username, password_hash, email, display_name, session_id, is_authenticated, role)
-       VALUES ($1, $2, $3, $4, $5, true, 'user')
-       RETURNING *`,
-      [username, passwordHash, email, displayName, sessionId]
-    );
+    return withTransaction(async (client) => {
+      const sessionId = uuidv4();
 
-    return this.mapRowToUser(result.rows[0]);
+      // Create the user first
+      const userResult = await client.query(
+        `INSERT INTO users (username, password_hash, email, display_name, session_id, is_authenticated, role)
+         VALUES ($1, $2, $3, $4, $5, true, 'user')
+         RETURNING *`,
+        [username, passwordHash, email, displayName, sessionId]
+      );
+      const userId = userResult.rows[0].id;
+
+      // Create organization using username/email as name
+      const orgName = displayName || username;
+      const orgSlug = username.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 50);
+      const orgResult = await client.query(
+        `INSERT INTO organizations (name, slug, billing_email)
+         VALUES ($1, $2, $3)
+         RETURNING *`,
+        [orgName, orgSlug, email]
+      );
+      const orgId = orgResult.rows[0].id;
+
+      // Add user as admin of their org
+      await client.query(
+        `INSERT INTO org_members (organization_id, user_id, role, can_use_org_account, can_create_escrows, can_manage_members)
+         VALUES ($1, $2, 'admin', true, true, true)`,
+        [orgId, userId]
+      );
+
+      // Set user's primary org
+      await client.query(
+        `UPDATE users SET primary_org_id = $1 WHERE id = $2`,
+        [orgId, userId]
+      );
+
+      // Create org account
+      await accountService.createOrgAccount(orgId, 'USD', client);
+
+      // Return updated user
+      const finalResult = await client.query(
+        `SELECT * FROM users WHERE id = $1`,
+        [userId]
+      );
+      return this.mapRowToUser(finalResult.rows[0]);
+    });
   }
 
   // Get or create user from session
@@ -319,6 +429,7 @@ export class UserService {
       isAuthenticated: row.is_authenticated,
       isProvider: row.is_provider,
       sessionId: row.session_id,
+      primaryOrgId: row.primary_org_id,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
