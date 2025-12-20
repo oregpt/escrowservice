@@ -160,10 +160,11 @@ export class EscrowService {
 
       // Check if user is from the originating org (can't accept your own org's escrow)
       const userResult = await client.query(
-        `SELECT primary_org_id FROM users WHERE id = $1`,
+        `SELECT primary_org_id, email FROM users WHERE id = $1`,
         [acceptingUserId]
       );
       const acceptingUserOrgId = userResult.rows[0]?.primary_org_id;
+      const acceptingUserEmail = userResult.rows[0]?.email;
 
       if (escrow.party_a_org_id === acceptingUserOrgId) {
         throw new Error('Cannot accept escrow from your own organization');
@@ -185,8 +186,13 @@ export class EscrowService {
         }
       }
 
-      // If not open and no party_b assigned, reject
-      if (!escrow.is_open && !escrow.party_b_user_id && !escrow.party_b_org_id) {
+      // Check if user's email matches counterparty_email (invited by email)
+      const emailMatches = escrow.counterparty_email &&
+        acceptingUserEmail &&
+        escrow.counterparty_email.toLowerCase() === acceptingUserEmail.toLowerCase();
+
+      // If not open, no party_b assigned, and email doesn't match, reject
+      if (!escrow.is_open && !escrow.party_b_user_id && !escrow.party_b_org_id && !emailMatches) {
         throw new Error('This escrow is not open for acceptance');
       }
 
@@ -944,7 +950,7 @@ export class EscrowService {
          SELECT jsonb_set(
            metadata,
            ('{obligations,' || idx || '}')::text[],
-           (metadata->'obligations'->idx) ||
+           (metadata->'obligations'->idx::int) ||
              jsonb_build_object(
                'status', $2::text,
                'completedAt', CASE WHEN $2 = 'completed' THEN to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') ELSE null END
