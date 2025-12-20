@@ -3,11 +3,9 @@ import { pool, withTransaction } from '../db/connection.js';
 import { accountService } from './account.service.js';
 import type { StripePayment, StripePaymentStatus } from '../types/index.js';
 
-// Only initialize Stripe if API key is provided
-const stripeApiKey = process.env.STRIPE_SECRET_KEY;
-const stripe = stripeApiKey 
-  ? new Stripe(stripeApiKey, { apiVersion: '2024-12-18.acacia' })
-  : null;
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+  apiVersion: '2024-12-18.acacia',
+});
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
@@ -19,9 +17,6 @@ export class StripeService {
     currency: string = 'usd',
     escrowId?: string
   ): Promise<{ sessionId: string; url: string }> {
-    if (!stripe) {
-      throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
-    }
     // Create checkout session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
@@ -72,9 +67,6 @@ export class StripeService {
 
   // Handle Stripe webhook events
   async handleWebhook(payload: Buffer, signature: string): Promise<void> {
-    if (!stripe) {
-      throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
-    }
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
     if (!webhookSecret) {
       throw new Error('Stripe webhook secret not configured');
