@@ -4,7 +4,7 @@ import { accountService } from './account.service.js';
 import type { StripePayment, StripePaymentStatus } from '../types/index.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2024-12-18.acacia',
+  apiVersion: '2024-12-18.acacia' as any,
 });
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';

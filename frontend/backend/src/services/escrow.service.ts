@@ -844,7 +844,9 @@ export class EscrowService {
         platformFeePercent: parseFloat(row.platform_fee_percent),
       } as any,
       attachments: [], // Loaded separately
-    };
+      partyAOrg: row.party_a_org_name ? { id: row.party_a_org_id, name: row.party_a_org_name } : undefined,
+      createdBy: row.created_by_name ? { id: row.created_by_user_id, displayName: row.created_by_name } : undefined,
+    } as unknown as EscrowWithParties;
   }
 
   // ============================================
@@ -889,7 +891,7 @@ export class EscrowService {
     // - Open offers (PENDING with no partyB): anyone authenticated can message to ask questions before accepting
     const isPartyA = escrow.partyAUserId === userId;
     const isPartyB = escrow.partyBUserId === userId;
-    const isOpenOffer = escrow.status === 'PENDING' && !escrow.partyBUserId;
+    const isOpenOffer = (escrow.status as string) === 'PENDING' && !escrow.partyBUserId;
 
     if (!isSystemMessage && !isPartyA && !isPartyB && !isOpenOffer) {
       throw new Error('Only parties to this escrow can add messages');

@@ -157,7 +157,7 @@ router.post('/platform', requireAuth, requirePlatformAdmin, async (req, res) => 
 router.put('/:id', requireAuth, async (req, res) => {
   try {
     const userId = req.userId!;
-    const isAdmin = req.userRole === 'platform_admin';
+    const isAdmin = (req as any).userRole === 'platform_admin';
     const input: UpdateTemplateInput = {
       name: req.body.name,
       description: req.body.description,
@@ -191,7 +191,7 @@ router.put('/:id', requireAuth, async (req, res) => {
 router.delete('/:id', requireAuth, async (req, res) => {
   try {
     const userId = req.userId!;
-    const isAdmin = req.userRole === 'platform_admin';
+    const isAdmin = (req as any).userRole === 'platform_admin';
 
     const deleted = await templateService.deleteTemplate(req.params.id, userId, isAdmin);
 

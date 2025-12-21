@@ -36,7 +36,7 @@ export class PlatformSettingsService {
     for (const row of result.rows) {
       const key = row.key as keyof PlatformSettings;
       if (key in settings) {
-        settings[key] = row.value;
+        (settings as any)[key] = row.value;
       }
     }
 

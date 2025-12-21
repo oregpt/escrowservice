@@ -38,7 +38,7 @@ async function fetchKaikoPrice(): Promise<{ price: number; source: 'kaiko' | 'de
       return { price: DEFAULT_CC_RATE, source: 'default' };
     }
 
-    const data = await response.json();
+    const data: any = await response.json();
 
     if (data.result === 'success' && data.data && data.data.length > 0) {
       const price = parseFloat(data.data[0].price);
