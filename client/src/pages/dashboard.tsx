@@ -5,15 +5,20 @@ import { EscrowCard } from "@/components/escrow/EscrowCard";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { Link } from "wouter";
-import { Plus, Loader2, Globe, UserCheck, Bell, ArrowRight } from "lucide-react";
+import { Plus, Loader2, Globe, UserCheck, Bell, ArrowRight, Wallet, Settings } from "lucide-react";
 import { useEscrows, usePendingEscrows, useAccount, useAcceptEscrow, useCancelEscrow, useAuth } from "@/hooks/use-api";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 
 export default function Dashboard() {
   const { toast } = useToast();
-  const [escrowFilter, setEscrowFilter] = useState<'all' | 'mine' | 'org'>('all');
+  const [escrowFilter, setEscrowFilter] = useState<'all' | 'org'>('all');
+  // Checkboxes for Organization tab filtering
+  const [showOriginatedByMe, setShowOriginatedByMe] = useState(true);
+  const [showMeAsCounterparty, setShowMeAsCounterparty] = useState(true);
 
   // Fetch data from API
   const { data: authData } = useAuth();
@@ -45,19 +50,31 @@ export default function Dashboard() {
     !['COMPLETED', 'CANCELED', 'EXPIRED'].includes(e.status)
   ) || [];
 
-  // Categorize active escrows
-  const myEscrows = allActiveEscrows.filter(e => e.createdByUserId === userId || e.partyAUserId === userId);
+  // Organization escrows - ALL escrows where user's org is involved (Party A or Party B)
   const orgEscrows = allActiveEscrows.filter(e =>
-    (e.partyAOrgId === userOrgId || e.partyBOrgId === userOrgId) &&
-    e.createdByUserId !== userId && e.partyAUserId !== userId
+    e.partyAOrgId === userOrgId || e.partyBOrgId === userOrgId
   );
 
-  // Apply filter
-  const activeEscrows = escrowFilter === 'mine'
-    ? myEscrows
-    : escrowFilter === 'org'
-      ? orgEscrows
-      : allActiveEscrows;
+  // Further filter org escrows based on checkboxes
+  const filteredOrgEscrows = orgEscrows.filter(e => {
+    const isOriginator = e.createdByUserId === userId || e.partyAUserId === userId;
+    const isCounterparty = e.partyBUserId === userId || (e.partyBOrgId === userOrgId && !isOriginator);
+
+    // If both checkboxes unchecked, show nothing
+    if (!showOriginatedByMe && !showMeAsCounterparty) return false;
+    // If both checked, show all org escrows
+    if (showOriginatedByMe && showMeAsCounterparty) return true;
+    // If only "Originated by me" checked
+    if (showOriginatedByMe && !showMeAsCounterparty) return isOriginator;
+    // If only "Me as counterparty" checked
+    if (!showOriginatedByMe && showMeAsCounterparty) return isCounterparty;
+    return true;
+  });
+
+  // Apply tab filter
+  const activeEscrows = escrowFilter === 'org'
+    ? filteredOrgEscrows
+    : allActiveEscrows;
 
   // Total pending count for notification
   const totalPendingCount = assignedToYou.length + assignedToYourOrg.length + openEscrows.length;
@@ -281,19 +298,44 @@ export default function Dashboard() {
 
             {/* Escrow Filter Tabs */}
             {userOrgId && allActiveEscrows.length > 0 && (
-              <Tabs value={escrowFilter} onValueChange={(v) => setEscrowFilter(v as 'all' | 'mine' | 'org')} className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="all" className="text-sm">
-                    All ({allActiveEscrows.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="mine" className="text-sm">
-                    My Escrows ({myEscrows.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="org" className="text-sm">
-                    Organization ({orgEscrows.length})
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
+              <div className="space-y-3">
+                <Tabs value={escrowFilter} onValueChange={(v) => setEscrowFilter(v as 'all' | 'org')} className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="all" className="text-sm">
+                      All Escrows ({allActiveEscrows.length})
+                    </TabsTrigger>
+                    <TabsTrigger value="org" className="text-sm">
+                      My Organization ({orgEscrows.length})
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+
+                {/* Role filter checkboxes - only show when Organization tab is selected */}
+                {escrowFilter === 'org' && (
+                  <div className="flex items-center gap-6 px-1">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="originated-by-me"
+                        checked={showOriginatedByMe}
+                        onCheckedChange={(checked) => setShowOriginatedByMe(checked === true)}
+                      />
+                      <Label htmlFor="originated-by-me" className="text-sm text-muted-foreground cursor-pointer">
+                        Originated by me
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="me-as-counterparty"
+                        checked={showMeAsCounterparty}
+                        onCheckedChange={(checked) => setShowMeAsCounterparty(checked === true)}
+                      />
+                      <Label htmlFor="me-as-counterparty" className="text-sm text-muted-foreground cursor-pointer">
+                        Me as counterparty
+                      </Label>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Active Escrows List */}
@@ -347,12 +389,12 @@ export default function Dashboard() {
                 </Link>
                 <Link href="/account">
                   <Button variant="outline" className="w-full justify-start">
-                    View Account & Ledger
+                    <Wallet className="mr-2 h-4 w-4" /> View Balances
                   </Button>
                 </Link>
                 <Link href="/settings">
                   <Button variant="outline" className="w-full justify-start">
-                    Auto-Accept Settings
+                    <Settings className="mr-2 h-4 w-4" /> Auto-Accept Settings
                   </Button>
                 </Link>
               </div>

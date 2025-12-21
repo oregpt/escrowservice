@@ -117,8 +117,8 @@ export function Header() {
   };
 
   // Build nav items based on auth status
-  // Anonymous users can only see Escrows tab
-  // Organization is accessed via dropdown, not nav
+  // Both authenticated and unauthenticated users see Dashboard and Escrows
+  // Authenticated users also see Balances
   const navItems = user?.isAuthenticated
     ? [
         { label: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -126,6 +126,7 @@ export function Header() {
         { label: "Balances", href: "/account", icon: Wallet },
       ]
     : [
+        { label: "Dashboard", href: "/", icon: LayoutDashboard },
         { label: "Escrows", href: "/escrow", icon: ShieldCheck },
       ];
 

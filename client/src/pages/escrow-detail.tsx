@@ -56,6 +56,8 @@ export default function EscrowDetail() {
   const id = params?.id || "";
 
   const { data: authData } = useAuth();
+  const user = authData?.user;
+
   const { data: escrow, isLoading } = useEscrow(id);
   const { data: attachmentsData } = useEscrowAttachments(id);
   const { data: messages } = useEscrowMessages(id);
@@ -115,7 +117,6 @@ export default function EscrowDetail() {
     },
   });
 
-  const user = authData?.user;
   const isPartyA = escrow?.partyAUserId === user?.id;
   const isPartyB = escrow?.partyBUserId === user?.id;
 

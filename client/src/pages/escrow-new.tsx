@@ -8,13 +8,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { ArrowLeft, Check, Shield, Loader2, Users, User, Globe, Mail, Building, Scale, Gavel, Bot } from "lucide-react";
+import { ArrowLeft, Check, Shield, Loader2, Users, User, Globe, Mail, Building, Scale, Gavel, Bot, FileText, Plus, Pencil, Trash2, Save } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useState, useMemo } from "react";
-import { useCreateEscrow, useServiceTypes } from "@/hooks/use-api";
+import { useCreateEscrow, useServiceTypes, usePublicPlatformSettings, useTemplates, useCreateTemplate, useRecordTemplateUsage, useDeleteTemplate } from "@/hooks/use-api";
 import { useToast } from "@/hooks/use-toast";
-import type { ServiceTypeId, CreateEscrowRequest, PrivacyLevel, ArbiterType } from "@/lib/api";
+import type { ServiceTypeId, CreateEscrowRequest, PrivacyLevel, ArbiterType, EscrowTemplate, EscrowTemplateConfig } from "@/lib/api";
 import { Lock, Eye, Building2 } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const EXPIRY_OPTIONS: Record<string, number> = {
   '24h': 1,
@@ -25,6 +26,7 @@ const EXPIRY_OPTIONS: Record<string, number> = {
 };
 
 const STEP_TITLES = [
+  { title: 'Choose Template', description: 'Start fresh or use a saved template.' },
   { title: 'Type & Details', description: 'Select the type of service and configure details.' },
   { title: 'Counterparty', description: 'Define who will fulfill this escrow.' },
   { title: 'Terms', description: 'Set the terms and conditions for the transaction.' },
@@ -32,9 +34,15 @@ const STEP_TITLES = [
 ];
 
 export default function EscrowNew() {
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(0); // Start at step 0 (template selection)
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+
+  // Template state
+  const [selectedTemplate, setSelectedTemplate] = useState<EscrowTemplate | null>(null);
+  const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const [templateDescription, setTemplateDescription] = useState('');
 
   // Step 1: Type & Details
   const [serviceType, setServiceType] = useState<ServiceTypeId>('CUSTOM');
@@ -63,13 +71,22 @@ export default function EscrowNew() {
 
   // API
   const { data: serviceTypes } = useServiceTypes();
+  const { data: publicSettings } = usePublicPlatformSettings();
+  const { data: allTemplates, isLoading: templatesLoading } = useTemplates();
   const createEscrow = useCreateEscrow();
+  const createTemplate = useCreateTemplate();
+  const recordTemplateUsage = useRecordTemplateUsage();
+  const deleteTemplate = useDeleteTemplate();
+
+  // Separate templates into user's and platform
+  const userTemplates = allTemplates?.filter(t => !t.isPlatformTemplate) || [];
+  const platformTemplates = allTemplates?.filter(t => t.isPlatformTemplate) || [];
 
   const currentServiceType = serviceTypes?.find(st => st.id === serviceType);
-  const platformFeePercent = currentServiceType?.platformFeePercent || 15;
   const amountNum = parseFloat(amount) || 0;
-  const platformFee = amountNum * (platformFeePercent / 100);
-  const totalAmount = amountNum + platformFee;
+
+  // Traffic price per MB from platform settings (default $60)
+  const trafficPricePerMB = publicSettings?.trafficPricePerMB || 60;
 
   // Parse metadata schema for dynamic fields
   const metadataSchema = useMemo(() => {
@@ -77,15 +94,123 @@ export default function EscrowNew() {
     return currentServiceType.metadataSchema as Record<string, string>;
   }, [currentServiceType]);
 
-  // For traffic buy: calculate bytes
+  // For traffic buy: calculate bytes using configurable price per MB
   const trafficBytes = useMemo(() => {
     if (serviceType === 'TRAFFIC_BUY' && metadataValues.trafficAmountBytes) {
       return parseInt(metadataValues.trafficAmountBytes) || 0;
     }
-    return Math.floor((amountNum / 60) * 1_000_000);
-  }, [serviceType, amountNum, metadataValues.trafficAmountBytes]);
+    // Calculate: amount / pricePerMB * 1,000,000 bytes
+    return Math.floor((amountNum / trafficPricePerMB) * 1_000_000);
+  }, [serviceType, amountNum, metadataValues.trafficAmountBytes, trafficPricePerMB]);
 
   const isOpen = counterpartyType === 'open';
+
+  // Load template into form
+  const loadTemplate = (template: EscrowTemplate) => {
+    const config = template.config;
+    setSelectedTemplate(template);
+
+    // Load all values from template config
+    if (config.serviceTypeId) setServiceType(config.serviceTypeId as ServiceTypeId);
+    if (config.amount !== undefined) setAmount(config.amount.toString());
+    if (config.title) setTitle(config.title);
+    if (config.metadata) setMetadataValues(config.metadata as Record<string, string>);
+
+    // Counterparty
+    if (config.isOpen !== undefined) {
+      setCounterpartyType(config.isOpen ? 'open' : 'specific');
+    }
+    if (config.counterpartyType === 'organization') {
+      setSpecificType('organization');
+    } else if (config.counterpartyType === 'email') {
+      setSpecificType('email');
+    }
+    if (config.counterpartyName) setCounterpartyName(config.counterpartyName);
+    if (config.counterpartyEmail) setCounterpartyEmail(config.counterpartyEmail);
+    if (config.counterpartyOrgId) setCounterpartyOrgId(config.counterpartyOrgId);
+    if (config.privacyLevel) setPrivacyLevel(config.privacyLevel);
+
+    // Arbiter
+    if (config.arbiterType) setArbiterType(config.arbiterType);
+    if (config.arbiterOrgId) setArbiterOrgId(config.arbiterOrgId);
+    if (config.arbiterEmail) setArbiterEmail(config.arbiterEmail);
+
+    // Terms
+    if (config.description) setDescription(config.description);
+    if (config.terms) setTerms(config.terms);
+    if (config.expiresInDays !== undefined) {
+      // Find matching expiry option
+      const match = Object.entries(EXPIRY_OPTIONS).find(([, days]) => days === config.expiresInDays);
+      if (match) setExpiryDays(match[0]);
+    }
+
+    // Record usage
+    recordTemplateUsage.mutate(template.id);
+  };
+
+  // Build current config for template
+  const buildTemplateConfig = (): EscrowTemplateConfig => ({
+    serviceTypeId: serviceType,
+    amount: amountNum,
+    currency: 'USD',
+    isOpen,
+    counterpartyType: isOpen ? 'open' : specificType,
+    counterpartyName: counterpartyName || undefined,
+    counterpartyEmail: specificType === 'email' ? counterpartyEmail : undefined,
+    counterpartyOrgId: specificType === 'organization' ? counterpartyOrgId : undefined,
+    privacyLevel,
+    arbiterType,
+    arbiterOrgId: arbiterType === 'organization' ? arbiterOrgId : undefined,
+    arbiterEmail: arbiterType === 'person' ? arbiterEmail : undefined,
+    title: title || undefined,
+    description: description || undefined,
+    terms: terms || undefined,
+    expiresInDays: EXPIRY_OPTIONS[expiryDays],
+    metadata: Object.keys(metadataValues).length > 0 ? metadataValues : undefined,
+  });
+
+  // Save as template
+  const handleSaveAsTemplate = async () => {
+    if (!templateName.trim()) {
+      toast({ title: "Required", description: "Please enter a template name", variant: "destructive" });
+      return;
+    }
+
+    try {
+      await createTemplate.mutateAsync({
+        name: templateName.trim(),
+        description: templateDescription.trim() || undefined,
+        serviceTypeId: serviceType,
+        config: buildTemplateConfig(),
+      });
+
+      toast({ title: "Template Saved", description: "Your template has been saved for future use." });
+      setShowSaveTemplateDialog(false);
+      setTemplateName('');
+      setTemplateDescription('');
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save template",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Delete template
+  const handleDeleteTemplate = async (templateId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await deleteTemplate.mutateAsync(templateId);
+      toast({ title: "Deleted", description: "Template deleted successfully." });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete template",
+        variant: "destructive"
+      });
+    }
+  };
 
   const handleMetadataChange = (key: string, value: string) => {
     setMetadataValues(prev => ({ ...prev, [key]: value }));
@@ -152,9 +277,13 @@ export default function EscrowNew() {
       // Build metadata from dynamic fields
       const metadata: Record<string, any> = { ...metadataValues };
 
-      // Auto-calculate traffic bytes for traffic buy
+      // Auto-populate traffic buy metadata
       if (serviceType === 'TRAFFIC_BUY') {
         metadata.trafficAmountBytes = trafficBytes;
+        // Set default domainId if not provided (hidden from UI)
+        if (!metadata.domainId) {
+          metadata.domainId = 'global::default';
+        }
       }
 
       const request: CreateEscrowRequest = {
@@ -197,6 +326,51 @@ export default function EscrowNew() {
   // Render dynamic metadata fields based on service type schema
   const renderMetadataFields = () => {
     const schemaKeys = Object.keys(metadataSchema);
+
+    // For TRAFFIC_BUY, always show custom layout regardless of schema
+    if (serviceType === 'TRAFFIC_BUY') {
+      return (
+        <div className="space-y-4 border-t pt-4 mt-4">
+          <h4 className="font-medium text-sm text-muted-foreground">
+            Canton Traffic Purchase Details
+          </h4>
+          <div className="grid grid-cols-1 gap-4">
+            {/* Validator Party ID - required input */}
+            <div className="space-y-2">
+              <Label>Validator Party ID <span className="text-red-500">*</span></Label>
+              <Input
+                placeholder="Enter the validator party ID"
+                value={metadataValues.validatorPartyId || ''}
+                onChange={(e) => handleMetadataChange('validatorPartyId', e.target.value)}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                The validator that should receive this traffic purchase
+              </p>
+            </div>
+
+            {/* Traffic pricing info - read-only display */}
+            <div className="bg-slate-50 p-4 rounded-lg space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Traffic Price per MB:</span>
+                <span className="font-mono font-medium">${trafficPricePerMB.toFixed(2)} USD</span>
+              </div>
+              <div className="flex justify-between text-sm border-t pt-2">
+                <span className="text-muted-foreground">Est. Traffic Amount:</span>
+                <span className="font-mono font-medium">
+                  {trafficBytes.toLocaleString()} bytes ({(trafficBytes / 1_000_000).toFixed(2)} MB)
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Calculated based on your payment amount
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Default rendering for other service types (only if schema exists)
     if (schemaKeys.length === 0) return null;
 
     return (
@@ -211,16 +385,9 @@ export default function EscrowNew() {
               .replace(/([A-Z])/g, ' $1')
               .replace(/^./, str => str.toUpperCase());
 
-            // Skip trafficAmountBytes as it's auto-calculated
-            if (key === 'trafficAmountBytes') {
-              return (
-                <div key={key} className="bg-slate-50 p-3 rounded text-sm">
-                  <span className="text-muted-foreground">Traffic Amount: </span>
-                  <span className="font-mono font-medium">{trafficBytes.toLocaleString()} bytes</span>
-                  <span className="text-muted-foreground"> ({(trafficBytes / 1_000_000).toFixed(2)} MB)</span>
-                  <p className="text-xs text-muted-foreground mt-1">Auto-calculated based on amount</p>
-                </div>
-              );
+            // Skip trafficAmountBytes and domainId as they're auto-handled
+            if (key === 'trafficAmountBytes' || key === 'domainId') {
+              return null;
             }
 
             return (
@@ -265,32 +432,173 @@ export default function EscrowNew() {
           <p className="text-muted-foreground mt-2">Set up a secure transaction with defined conditions.</p>
         </div>
 
-        {/* Steps Indicator */}
-        <div className="flex items-center gap-2 mb-8 overflow-x-auto pb-2">
-          {STEP_TITLES.map((s, idx) => {
-            const stepNum = idx + 1;
-            return (
-              <div key={stepNum} className="flex items-center gap-2 flex-shrink-0">
-                <div className={`
-                  h-8 w-8 rounded-full flex items-center justify-center text-sm font-medium border transition-colors
-                  ${step === stepNum ? 'bg-primary text-primary-foreground border-primary' :
-                    step > stepNum ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-background text-muted-foreground'}
-                `}>
-                  {step > stepNum ? <Check className="h-4 w-4" /> : stepNum}
+        {/* Steps Indicator - only show for steps 1-4 */}
+        {step > 0 && (
+          <div className="flex items-center gap-2 mb-8 overflow-x-auto pb-2">
+            {STEP_TITLES.slice(1).map((s, idx) => {
+              const stepNum = idx + 1;
+              return (
+                <div key={stepNum} className="flex items-center gap-2 flex-shrink-0">
+                  <div className={`
+                    h-8 w-8 rounded-full flex items-center justify-center text-sm font-medium border transition-colors
+                    ${step === stepNum ? 'bg-primary text-primary-foreground border-primary' :
+                      step > stepNum ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-background text-muted-foreground'}
+                  `}>
+                    {step > stepNum ? <Check className="h-4 w-4" /> : stepNum}
+                  </div>
+                  <span className={`text-sm whitespace-nowrap ${step === stepNum ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
+                    {s.title}
+                  </span>
+                  {stepNum < 4 && <div className="w-8 h-px bg-border mx-1" />}
                 </div>
-                <span className={`text-sm whitespace-nowrap ${step === stepNum ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
-                  {s.title}
-                </span>
-                {stepNum < 4 && <div className="w-8 h-px bg-border mx-1" />}
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
 
+        {/* Step 0: Template Selection */}
+        {step === 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{STEP_TITLES[0].title}</CardTitle>
+              <CardDescription>{STEP_TITLES[0].description}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Start Fresh Option */}
+              <Button
+                variant="outline"
+                className="w-full h-auto p-6 justify-start gap-4"
+                onClick={() => setStep(1)}
+              >
+                <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Plus className="h-6 w-6 text-primary" />
+                </div>
+                <div className="text-left">
+                  <div className="font-medium text-lg">Start Fresh</div>
+                  <div className="text-sm text-muted-foreground">Create a new escrow from scratch</div>
+                </div>
+              </Button>
+
+              {/* User Templates */}
+              {userTemplates.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <FileText className="h-4 w-4" /> My Templates
+                  </h3>
+                  <div className="grid gap-2">
+                    {userTemplates.map((template) => (
+                      <div
+                        key={template.id}
+                        className="group relative border rounded-lg p-4 hover:border-primary cursor-pointer transition-colors"
+                        onClick={() => {
+                          loadTemplate(template);
+                          setStep(4); // Go directly to review
+                        }}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start gap-3">
+                            <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center">
+                              <FileText className="h-5 w-5 text-slate-600" />
+                            </div>
+                            <div>
+                              <div className="font-medium">{template.name}</div>
+                              {template.description && (
+                                <div className="text-sm text-muted-foreground">{template.description}</div>
+                              )}
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {template.serviceTypeName && <Badge variant="outline" className="mr-2">{template.serviceTypeName}</Badge>}
+                                {template.config.amount && <span>${template.config.amount} USD</span>}
+                                {template.useCount > 0 && <span className="ml-2">• Used {template.useCount}x</span>}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                loadTemplate(template);
+                                setStep(1); // Go to edit mode
+                              }}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              onClick={(e) => handleDeleteTemplate(template.id, e)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Platform Templates */}
+              {platformTemplates.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <Building2 className="h-4 w-4" /> Platform Templates
+                  </h3>
+                  <div className="grid gap-2">
+                    {platformTemplates.map((template) => (
+                      <div
+                        key={template.id}
+                        className="border rounded-lg p-4 hover:border-primary cursor-pointer transition-colors"
+                        onClick={() => {
+                          loadTemplate(template);
+                          setStep(4); // Go directly to review
+                        }}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                            <Building2 className="h-5 w-5 text-primary" />
+                          </div>
+                          <div>
+                            <div className="font-medium">{template.name}</div>
+                            {template.description && (
+                              <div className="text-sm text-muted-foreground">{template.description}</div>
+                            )}
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {template.serviceTypeName && <Badge variant="outline" className="mr-2">{template.serviceTypeName}</Badge>}
+                              {template.config.amount && <span>${template.config.amount} USD</span>}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {templatesLoading && (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              )}
+
+              {!templatesLoading && userTemplates.length === 0 && platformTemplates.length === 0 && (
+                <p className="text-center text-sm text-muted-foreground py-4">
+                  No templates yet. Create an escrow and save it as a template for quick reuse.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Main Form Steps (1-4) */}
+        {step > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>{STEP_TITLES[step - 1].title}</CardTitle>
-            <CardDescription>{STEP_TITLES[step - 1].description}</CardDescription>
+            <CardTitle>{STEP_TITLES[step].title}</CardTitle>
+            <CardDescription>{STEP_TITLES[step].description}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
 
@@ -348,9 +656,6 @@ export default function EscrowNew() {
                       onChange={(e) => setAmount(e.target.value)}
                     />
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Platform fee: {platformFeePercent}% (${platformFee.toFixed(2)})
-                  </p>
                 </div>
 
                 {/* Dynamic metadata fields based on service type */}
@@ -391,7 +696,7 @@ export default function EscrowNew() {
                         </div>
                       </div>
                       <p className="text-sm text-muted-foreground pl-6">
-                        Anyone can view and accept this escrow. Great for public services or when you don't have a specific provider in mind.
+                        Anyone can view and accept this escrow.
                       </p>
                     </Label>
 
@@ -798,22 +1103,15 @@ export default function EscrowNew() {
                     <span className="text-muted-foreground">Amount</span>
                     <span className="font-mono font-bold">${amountNum.toFixed(2)} USD</span>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Platform Fee ({platformFeePercent}%)</span>
-                    <span className="font-mono">${platformFee.toFixed(2)} USD</span>
-                  </div>
-                  <div className="border-t pt-3 flex justify-between text-base">
-                    <span className="font-medium">Total Required</span>
-                    <span className="font-mono font-bold text-primary">${totalAmount.toFixed(2)} USD</span>
-                  </div>
                 </div>
 
                 {/* Service-specific metadata */}
-                {Object.keys(metadataValues).length > 0 && (
+                {(Object.keys(metadataValues).length > 0 || serviceType === 'TRAFFIC_BUY') && (
                   <div className="bg-slate-50 p-4 rounded-lg space-y-2 border">
                     <h4 className="font-medium text-sm border-b pb-2">{currentServiceType?.name} Details</h4>
                     {Object.entries(metadataValues).map(([key, value]) => {
-                      if (!value) return null;
+                      // Hide domainId and trafficAmountBytes from review
+                      if (!value || key === 'domainId' || key === 'trafficAmountBytes') return null;
                       const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
                       return (
                         <div key={key} className="flex justify-between text-sm">
@@ -823,10 +1121,16 @@ export default function EscrowNew() {
                       );
                     })}
                     {serviceType === 'TRAFFIC_BUY' && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Traffic Amount</span>
-                        <span className="font-mono">{trafficBytes.toLocaleString()} bytes</span>
-                      </div>
+                      <>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Traffic Price per MB</span>
+                          <span className="font-mono">${trafficPricePerMB.toFixed(2)} USD</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Est. Traffic Amount</span>
+                          <span className="font-mono">{trafficBytes.toLocaleString()} bytes ({(trafficBytes / 1_000_000).toFixed(2)} MB)</span>
+                        </div>
+                      </>
                     )}
                   </div>
                 )}
@@ -937,6 +1241,10 @@ export default function EscrowNew() {
                 <Button variant="outline" onClick={handleBack}>
                   Previous
                 </Button>
+              ) : step === 1 ? (
+                <Button variant="outline" onClick={() => setStep(0)}>
+                  <ArrowLeft className="mr-2 h-4 w-4" /> Templates
+                </Button>
               ) : (
                 <div />
               )}
@@ -946,24 +1254,81 @@ export default function EscrowNew() {
                   Next Step
                 </Button>
               ) : (
-                <Button
-                  onClick={handleSubmit}
-                  className="bg-emerald-600 hover:bg-emerald-700"
-                  disabled={createEscrow.isPending}
-                >
-                  {createEscrow.isPending ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    'Create Escrow'
-                  )}
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowSaveTemplateDialog(true)}
+                    disabled={createEscrow.isPending}
+                  >
+                    <Save className="mr-2 h-4 w-4" />
+                    Save as Template
+                  </Button>
+                  <Button
+                    onClick={handleSubmit}
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                    disabled={createEscrow.isPending}
+                  >
+                    {createEscrow.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      'Create Escrow'
+                    )}
+                  </Button>
+                </div>
               )}
             </div>
           </CardContent>
         </Card>
+        )}
+
+        {/* Save as Template Dialog */}
+        <Dialog open={showSaveTemplateDialog} onOpenChange={setShowSaveTemplateDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Save as Template</DialogTitle>
+              <DialogDescription>
+                Save this escrow configuration as a template for quick reuse.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Template Name <span className="text-red-500">*</span></Label>
+                <Input
+                  placeholder="e.g., Monthly Traffic Purchase"
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Description (Optional)</Label>
+                <Textarea
+                  placeholder="Describe what this template is for..."
+                  value={templateDescription}
+                  onChange={(e) => setTemplateDescription(e.target.value)}
+                  className="min-h-[80px]"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowSaveTemplateDialog(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveAsTemplate} disabled={createTemplate.isPending}>
+                {createTemplate.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Template'
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </PageContainer>
     </div>
   );

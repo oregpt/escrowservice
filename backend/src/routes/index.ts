@@ -9,6 +9,7 @@ import adminRoutes from './admin.routes.js';
 import platformSettingsRoutes from './platform-settings.routes.js';
 import paymentRoutes from './payment.routes.js';
 import webhookRoutes from './webhook.routes.js';
+import templateRoutes from './template.routes.js';
 
 const router = Router();
 
@@ -21,7 +22,9 @@ router.use('/attachments', attachmentRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/admin', adminRoutes);
 router.use('/admin/platform-settings', platformSettingsRoutes);
+router.use('/platform-settings', platformSettingsRoutes);
 router.use('/payments', paymentRoutes);
+router.use('/templates', templateRoutes);
 
 // Webhooks are mounted separately to handle raw body
 

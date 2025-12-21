@@ -4,6 +4,28 @@ import { requireAuth, requirePlatformAdmin } from '../middleware/auth.middleware
 
 const router = Router();
 
+// Get public platform settings (no auth required) - only non-sensitive settings
+router.get('/public', async (req, res) => {
+  try {
+    const settings = await platformSettingsService.getSettings();
+    // Only expose non-sensitive settings
+    res.json({
+      success: true,
+      data: {
+        platformName: settings.platformName,
+        trafficPricePerMB: settings.trafficPricePerMB,
+        minEscrowAmount: settings.minEscrowAmount,
+        maxEscrowAmount: settings.maxEscrowAmount,
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get settings',
+    });
+  }
+});
+
 // Get all platform settings (platform admin only)
 router.get('/', requireAuth, requirePlatformAdmin, async (req, res) => {
   try {

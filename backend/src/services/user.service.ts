@@ -371,7 +371,17 @@ export class UserService {
   }
 
   // Link session to user (after auth)
+  // IMPORTANT: First clear this session from any other users to prevent conflicts
   async linkSession(userId: string, sessionId: string): Promise<void> {
+    // Clear session from any other users who currently have it
+    // This prevents the bug where an anonymous user and authenticated user
+    // both have the same session_id after login
+    await pool.query(
+      `UPDATE users SET session_id = NULL, updated_at = NOW() WHERE session_id = $1 AND id != $2`,
+      [sessionId, userId]
+    );
+
+    // Now link the session to the target user
     await pool.query(
       `UPDATE users SET session_id = $1, updated_at = NOW() WHERE id = $2`,
       [sessionId, userId]

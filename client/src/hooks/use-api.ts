@@ -10,6 +10,8 @@ import {
   serviceTypes,
   traffic,
   attachments,
+  platformSettings,
+  templates,
   type User,
   type UserRole,
   type AccountWithTotals,
@@ -27,6 +29,10 @@ import {
   type PaymentProviderInfo,
   type PaymentProviderType,
   type Payment,
+  type PublicPlatformSettings,
+  type EscrowTemplate,
+  type EscrowTemplateConfig,
+  type CreateTemplateInput,
 } from '@/lib/api';
 
 // ===== AUTH HOOKS =====
@@ -686,6 +692,123 @@ export function useTrafficCalculator() {
       const res = await traffic.calculate(usd, bytes);
       if (!res.success) throw new Error(res.error);
       return res.data;
+    },
+  });
+}
+
+// ===== PLATFORM SETTINGS (Public) =====
+
+export function usePublicPlatformSettings() {
+  return useQuery({
+    queryKey: ['platform-settings', 'public'],
+    queryFn: async () => {
+      const res = await platformSettings.getPublic();
+      return res.success ? res.data : null;
+    },
+    staleTime: 1000 * 60 * 60, // 1 hour - these rarely change
+  });
+}
+
+// ===== ESCROW TEMPLATES =====
+
+export function useTemplates() {
+  return useQuery({
+    queryKey: ['templates'],
+    queryFn: async () => {
+      const res = await templates.getAll();
+      return res.success ? res.data : [];
+    },
+  });
+}
+
+export function useMyTemplates() {
+  return useQuery({
+    queryKey: ['templates', 'mine'],
+    queryFn: async () => {
+      const res = await templates.getMine();
+      return res.success ? res.data : [];
+    },
+  });
+}
+
+export function usePlatformTemplates() {
+  return useQuery({
+    queryKey: ['templates', 'platform'],
+    queryFn: async () => {
+      const res = await templates.getPlatform();
+      return res.success ? res.data : [];
+    },
+  });
+}
+
+export function useTemplate(id: string) {
+  return useQuery({
+    queryKey: ['templates', id],
+    queryFn: async () => {
+      const res = await templates.getById(id);
+      return res.success ? res.data : null;
+    },
+    enabled: !!id,
+  });
+}
+
+export function useCreateTemplate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: CreateTemplateInput) => {
+      const res = await templates.create(data);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['templates'] });
+    },
+  });
+}
+
+export function useUpdateTemplate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<CreateTemplateInput> }) => {
+      const res = await templates.update(id, data);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['templates'] });
+      queryClient.invalidateQueries({ queryKey: ['templates', id] });
+    },
+  });
+}
+
+export function useDeleteTemplate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await templates.delete(id);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['templates'] });
+    },
+  });
+}
+
+export function useRecordTemplateUsage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await templates.recordUsage(id);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['templates'] });
     },
   });
 }

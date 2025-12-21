@@ -273,6 +273,29 @@ CREATE TABLE IF NOT EXISTS tokenization_records (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Escrow Templates (user-saved and platform templates)
+CREATE TABLE IF NOT EXISTS escrow_templates (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    service_type_id VARCHAR(50) REFERENCES service_types(id),
+    is_platform_template BOOLEAN DEFAULT false,
+    -- Template configuration (stores all escrow creation fields)
+    config JSONB NOT NULL DEFAULT '{}',
+    -- Usage tracking
+    use_count INTEGER DEFAULT 0,
+    last_used_at TIMESTAMP,
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_escrow_templates_user ON escrow_templates(user_id);
+CREATE INDEX IF NOT EXISTS idx_escrow_templates_platform ON escrow_templates(is_platform_template) WHERE is_platform_template = true;
+CREATE INDEX IF NOT EXISTS idx_escrow_templates_service_type ON escrow_templates(service_type_id);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_org_members_org ON org_members(organization_id);
 CREATE INDEX IF NOT EXISTS idx_org_members_user ON org_members(user_id);

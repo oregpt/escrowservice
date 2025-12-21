@@ -9,6 +9,7 @@ export interface PlatformSettings {
   requireEmailVerification: boolean;
   allowAnonymousUsers: boolean;
   maintenanceMode: boolean;
+  trafficPricePerMB: number; // Price in USD per MB of traffic (Canton Network)
 }
 
 const DEFAULT_SETTINGS: PlatformSettings = {
@@ -20,6 +21,7 @@ const DEFAULT_SETTINGS: PlatformSettings = {
   requireEmailVerification: false,
   allowAnonymousUsers: true,
   maintenanceMode: false,
+  trafficPricePerMB: 60, // $60 per MB default
 };
 
 export class PlatformSettingsService {

@@ -16,6 +16,7 @@ interface PlatformSettings {
   defaultPlatformFee: number;
   minEscrowAmount: number;
   maxEscrowAmount: number;
+  trafficPricePerMB: number;
   requireEmailVerification: boolean;
   allowAnonymousUsers: boolean;
   maintenanceMode: boolean;
@@ -27,6 +28,7 @@ const DEFAULT_SETTINGS: PlatformSettings = {
   defaultPlatformFee: 15,
   minEscrowAmount: 10,
   maxEscrowAmount: 100000,
+  trafficPricePerMB: 60,
   requireEmailVerification: false,
   allowAnonymousUsers: true,
   maintenanceMode: false,
@@ -184,7 +186,7 @@ export default function AdminSettingsPage() {
             <CardDescription>Configure fees and transaction limits</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="platformFee">Default Platform Fee (%)</Label>
                 <Input
@@ -196,6 +198,22 @@ export default function AdminSettingsPage() {
                   onChange={(e) => updateSetting('defaultPlatformFee', parseFloat(e.target.value) || 0)}
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="trafficPrice">Traffic Price per MB ($)</Label>
+                <Input
+                  id="trafficPrice"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={settings.trafficPricePerMB}
+                  onChange={(e) => updateSetting('trafficPricePerMB', parseFloat(e.target.value) || 0)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Price per MB for Canton Network traffic purchases
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="minAmount">Min Escrow Amount ($)</Label>
                 <Input

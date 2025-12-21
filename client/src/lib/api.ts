@@ -479,6 +479,101 @@ export const traffic = {
   },
 };
 
+// ===== PLATFORM SETTINGS (public subset) =====
+export interface PublicPlatformSettings {
+  platformName: string;
+  trafficPricePerMB: number;
+  minEscrowAmount: number;
+  maxEscrowAmount: number;
+}
+
+export const platformSettings = {
+  getPublic: () => apiFetch<PublicPlatformSettings>('/platform-settings/public'),
+};
+
+// ===== ESCROW TEMPLATES =====
+export interface EscrowTemplateConfig {
+  serviceTypeId?: string;
+  amount?: number;
+  currency?: string;
+  isOpen?: boolean;
+  counterpartyType?: 'open' | 'email' | 'organization';
+  counterpartyName?: string;
+  counterpartyEmail?: string;
+  counterpartyOrgId?: string;
+  privacyLevel?: 'public' | 'platform' | 'private';
+  arbiterType?: 'platform_only' | 'platform_ai' | 'organization' | 'person';
+  arbiterOrgId?: string;
+  arbiterEmail?: string;
+  title?: string;
+  description?: string;
+  terms?: string;
+  expiresInDays?: number;
+  metadata?: Record<string, any>;
+}
+
+export interface EscrowTemplate {
+  id: string;
+  userId: string | null;
+  name: string;
+  description: string | null;
+  serviceTypeId: string | null;
+  serviceTypeName?: string;
+  isPlatformTemplate: boolean;
+  config: EscrowTemplateConfig;
+  useCount: number;
+  lastUsedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTemplateInput {
+  name: string;
+  description?: string;
+  serviceTypeId?: string;
+  config: EscrowTemplateConfig;
+}
+
+export const templates = {
+  // Get all templates for current user (includes platform templates)
+  getAll: () => apiFetch<EscrowTemplate[]>('/templates'),
+
+  // Get user's own templates only
+  getMine: () => apiFetch<EscrowTemplate[]>('/templates/mine'),
+
+  // Get platform templates only
+  getPlatform: () => apiFetch<EscrowTemplate[]>('/templates/platform'),
+
+  // Get a single template by ID
+  getById: (id: string) => apiFetch<EscrowTemplate>(`/templates/${id}`),
+
+  // Create a new template
+  create: (data: CreateTemplateInput) =>
+    apiFetch<EscrowTemplate>('/templates', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Update a template
+  update: (id: string, data: Partial<CreateTemplateInput>) =>
+    apiFetch<EscrowTemplate>(`/templates/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  // Delete a template
+  delete: (id: string) =>
+    apiFetch<{ message: string }>(`/templates/${id}`, {
+      method: 'DELETE',
+    }),
+
+  // Record template usage
+  recordUsage: (id: string) =>
+    apiFetch<{ message: string }>(`/templates/${id}/use`, {
+      method: 'POST',
+    }),
+};
+
 // ===== TYPE DEFINITIONS =====
 // These match the backend types
 
