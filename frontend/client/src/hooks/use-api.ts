@@ -60,13 +60,15 @@ export function useRegister() {
       password,
       email,
       displayName,
+      organizationName,
     }: {
       username: string;
       password: string;
       email?: string;
       displayName?: string;
+      organizationName?: string;
     }) => {
-      const res = await auth.register(username, password, email, displayName);
+      const res = await auth.register(username, password, email, displayName, organizationName);
       if (!res.success) throw new Error(res.error);
       return res.data;
     },

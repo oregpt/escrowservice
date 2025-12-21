@@ -194,7 +194,8 @@ export class UserService {
     username: string,
     passwordHash: string,
     email?: string,
-    displayName?: string
+    displayName?: string,
+    organizationName?: string
   ): Promise<User> {
     return withTransaction(async (client) => {
       const sessionId = uuidv4();
@@ -208,8 +209,8 @@ export class UserService {
       );
       const userId = userResult.rows[0].id;
 
-      // Create organization using username/email as name
-      const orgName = displayName || username;
+      // Create organization - use provided name, or fall back to displayName/username
+      const orgName = organizationName || displayName || username;
       const orgSlug = username.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 50);
       const orgResult = await client.query(
         `INSERT INTO organizations (name, slug, billing_email)

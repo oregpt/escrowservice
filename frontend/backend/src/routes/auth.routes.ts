@@ -62,8 +62,8 @@ router.post('/session', async (req, res) => {
 // Register new account with username/password
 router.post('/register', async (req, res) => {
   try {
-    const { username, password, email, displayName } = req.body as RegisterRequest;
-    const sessionId = req.headers['x-session-id'] as string;
+    const { username, password, email, displayName, organizationName } = req.body as RegisterRequest & { organizationName?: string };
+    let sessionId = req.headers['x-session-id'] as string;
 
     if (!username || !password) {
       return res.status(400).json({
@@ -102,22 +102,26 @@ router.post('/register', async (req, res) => {
     // Hash password
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-    // Create authenticated user
+    // Create authenticated user with optional organization name
     const user = await userService.createAuthenticatedUserWithPassword(
       username,
       passwordHash,
       email,
-      displayName
+      displayName,
+      organizationName
     );
 
-    // Link to session if exists
-    if (sessionId) {
-      await userService.linkSession(user.id, sessionId);
+    // Generate new session ID if not provided
+    if (!sessionId) {
+      sessionId = crypto.randomUUID();
     }
+
+    // Link session to user (always - this logs them in automatically)
+    await userService.linkSession(user.id, sessionId);
 
     const response: ApiResponse<{ user: User; sessionId: string }> = {
       success: true,
-      data: { user, sessionId: user.sessionId || sessionId },
+      data: { user, sessionId },
     };
     res.json(response);
   } catch (error) {

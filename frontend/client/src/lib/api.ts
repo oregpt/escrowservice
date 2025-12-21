@@ -81,10 +81,10 @@ export const auth = {
   }),
 
   // Register new account with username/password
-  register: (username: string, password: string, email?: string, displayName?: string) =>
+  register: (username: string, password: string, email?: string, displayName?: string, organizationName?: string) =>
     apiFetch<{ user: User; sessionId: string }>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ username, password, email, displayName }),
+      body: JSON.stringify({ username, password, email, displayName, organizationName }),
     }).then((res) => {
       if (res.success && res.data?.sessionId) {
         setSessionId(res.data.sessionId);

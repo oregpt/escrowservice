@@ -45,6 +45,7 @@ export function Header() {
   const [password, setPassword] = useState('');
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [organizationName, setOrganizationName] = useState('');
   const [error, setError] = useState('');
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
 
@@ -96,6 +97,7 @@ export function Header() {
     setPassword('');
     setEmail('');
     setDisplayName('');
+    setOrganizationName('');
     setError('');
     setForgotEmailSent(false);
     setAuthMode('signin');
@@ -171,6 +173,7 @@ export function Header() {
         password,
         email: email.trim(),
         displayName: displayName.trim() || undefined,
+        organizationName: organizationName.trim() || undefined,
       });
 
       // Clear ALL cached queries to force fresh data
@@ -323,13 +326,13 @@ export function Header() {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>
-                      {authMode === 'signin' ? 'Sign In' : authMode === 'signup' ? 'Create Account' : 'Reset Password'}
+                      {authMode === 'signin' ? 'Sign In' : authMode === 'signup' ? 'Create Account & Organization' : 'Reset Password'}
                     </DialogTitle>
                     <DialogDescription>
                       {authMode === 'signin'
                         ? 'Enter your credentials to access your account.'
                         : authMode === 'signup'
-                        ? 'Create an account to save your deals and track progress.'
+                        ? 'Create your account and your first organization. You\'ll be the admin of this organization.'
                         : 'Enter your email to receive a password reset link.'}
                     </DialogDescription>
                   </DialogHeader>
@@ -471,13 +474,26 @@ export function Header() {
                             disabled={register.isPending}
                           />
                         </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="auth-orgName">Organization Name (optional)</Label>
+                          <Input
+                            id="auth-orgName"
+                            placeholder="Your company or team name"
+                            value={organizationName}
+                            onChange={(e) => setOrganizationName(e.target.value)}
+                            disabled={register.isPending}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Leave blank to use your display name or username
+                          </p>
+                        </div>
                         <Button
                           className="w-full"
                           onClick={handleSignup}
                           disabled={register.isPending}
                         >
                           {register.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                          Create Account
+                          Create Account & Organization
                         </Button>
                       </>
                     )}
