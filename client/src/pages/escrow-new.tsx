@@ -11,7 +11,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ArrowLeft, Check, Shield, Loader2, Users, User, Globe, Mail, Building, Scale, Gavel, Bot, FileText, Plus, Pencil, Trash2, Save } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useState, useMemo } from "react";
-import { useCreateEscrow, useServiceTypes, usePublicPlatformSettings, useTemplates, useCreateTemplate, useRecordTemplateUsage, useDeleteTemplate } from "@/hooks/use-api";
+import { useCreateEscrow, useServiceTypes, usePublicPlatformSettings, useCCPrice, useTemplates, useCreateTemplate, useRecordTemplateUsage, useDeleteTemplate } from "@/hooks/use-api";
 import { useToast } from "@/hooks/use-toast";
 import type { ServiceTypeId, CreateEscrowRequest, PrivacyLevel, ArbiterType, EscrowTemplate, EscrowTemplateConfig } from "@/lib/api";
 import { Lock, Eye, Building2 } from "lucide-react";
@@ -72,11 +72,18 @@ export default function EscrowNew() {
   // API
   const { data: serviceTypes } = useServiceTypes();
   const { data: publicSettings } = usePublicPlatformSettings();
+  const { data: ccPriceData } = useCCPrice();
   const { data: allTemplates, isLoading: templatesLoading } = useTemplates();
   const createEscrow = useCreateEscrow();
   const createTemplate = useCreateTemplate();
   const recordTemplateUsage = useRecordTemplateUsage();
   const deleteTemplate = useDeleteTemplate();
+
+  // CC (Canton Coin) price - editable with Kaiko as default source
+  const [manualCcRate, setManualCcRate] = useState<string>('');
+  const ccPriceUsd = manualCcRate ? parseFloat(manualCcRate) : (ccPriceData?.ccPriceUsd || 0.1);
+  const ccSource = manualCcRate ? 'manual' : (ccPriceData?.source || 'default');
+  const amountInCC = ccPriceUsd > 0 ? parseFloat(amount || '0') / ccPriceUsd : 0;
 
   // Separate templates into user's and platform
   const userTemplates = allTemplates?.filter(t => !t.isPlatformTemplate) || [];
@@ -349,20 +356,71 @@ export default function EscrowNew() {
               </p>
             </div>
 
-            {/* Traffic pricing info - read-only display */}
-            <div className="bg-slate-50 p-4 rounded-lg space-y-2">
-              <div className="flex justify-between text-sm">
+            {/* Amount input - moved here to be close to pricing info */}
+            <div className="space-y-2">
+              <Label htmlFor="amount">Amount (USD) <span className="text-red-500">*</span></Label>
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-medium text-muted-foreground">$</span>
+                <Input
+                  id="amount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="flex-1 text-lg font-mono"
+                  placeholder="0.00"
+                />
+                <span className="text-sm text-muted-foreground">USD</span>
+              </div>
+            </div>
+
+            {/* Pricing & Conversion Info */}
+            <div className="bg-slate-50 p-4 rounded-lg space-y-3">
+              {/* CC Price from Kaiko */}
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-muted-foreground">
+                  CC Price {ccSource === 'kaiko' ? '(from Kaiko)' : ccSource === 'manual' ? '(manual)' : '(default)'}:
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">$</span>
+                  <Input
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    value={manualCcRate || ccPriceData?.ccPriceUsd?.toFixed(4) || '0.1000'}
+                    onChange={(e) => setManualCcRate(e.target.value)}
+                    className="w-24 h-7 text-sm font-mono text-right"
+                    placeholder="0.1000"
+                  />
+                  <span className="text-xs text-muted-foreground">USD/CC</span>
+                </div>
+              </div>
+
+              {/* Amount in CC */}
+              <div className="flex justify-between text-sm border-t pt-2">
+                <span className="text-muted-foreground">Amount in CC (Canton Coin):</span>
+                <span className="font-mono font-medium text-primary">
+                  {amountInCC.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CC
+                </span>
+              </div>
+
+              {/* Traffic Price per MB */}
+              <div className="flex justify-between text-sm border-t pt-2">
                 <span className="text-muted-foreground">Traffic Price per MB:</span>
                 <span className="font-mono font-medium">${trafficPricePerMB.toFixed(2)} USD</span>
               </div>
+
+              {/* Est. Traffic Amount */}
               <div className="flex justify-between text-sm border-t pt-2">
                 <span className="text-muted-foreground">Est. Traffic Amount:</span>
                 <span className="font-mono font-medium">
                   {trafficBytes.toLocaleString()} bytes ({(trafficBytes / 1_000_000).toFixed(2)} MB)
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Calculated based on your payment amount
+
+              <p className="text-xs text-muted-foreground pt-1">
+                CC price is fetched from Kaiko. Edit the rate above to override.
               </p>
             </div>
           </div>
@@ -645,18 +703,21 @@ export default function EscrowNew() {
                   )}
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Amount (USD)</Label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
-                    <Input
-                      placeholder="0.00"
-                      className="pl-7 font-mono"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                    />
+                {/* Amount input - hidden for TRAFFIC_BUY as it's in the custom layout */}
+                {serviceType !== 'TRAFFIC_BUY' && (
+                  <div className="space-y-2">
+                    <Label>Amount (USD)</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
+                      <Input
+                        placeholder="0.00"
+                        className="pl-7 font-mono"
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Dynamic metadata fields based on service type */}
                 {renderMetadataFields()}

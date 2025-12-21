@@ -11,6 +11,7 @@ import {
   traffic,
   attachments,
   platformSettings,
+  ccPrice,
   templates,
   type User,
   type UserRole,
@@ -706,6 +707,34 @@ export function usePublicPlatformSettings() {
       return res.success ? res.data : null;
     },
     staleTime: 1000 * 60 * 60, // 1 hour - these rarely change
+  });
+}
+
+// ===== CC PRICE (Canton Coin) =====
+
+export function useCCPrice() {
+  return useQuery({
+    queryKey: ['cc-price'],
+    queryFn: async () => {
+      const res = await ccPrice.get();
+      return res.success ? res.data : null;
+    },
+    staleTime: 1000 * 60 * 5, // 5 minutes - matches backend cache
+  });
+}
+
+export function useRefreshCCPrice() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      const res = await ccPrice.refresh();
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cc-price'] });
+    },
   });
 }
 

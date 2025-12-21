@@ -491,6 +491,22 @@ export const platformSettings = {
   getPublic: () => apiFetch<PublicPlatformSettings>('/platform-settings/public'),
 };
 
+// ===== CC PRICE (Canton Coin) =====
+export interface CCPriceData {
+  ccPriceUsd: number;      // Price of 1 CC in USD (e.g., 0.14 means 1 CC = $0.14)
+  usdPerCc: number;        // Same as above
+  ccPerUsd: number;        // How many CC you get for $1 USD
+  source: 'kaiko' | 'default';
+  cached: boolean;
+  defaultRate: number;
+  lastUpdated: string | null;
+}
+
+export const ccPrice = {
+  get: () => apiFetch<CCPriceData>('/cc-price'),
+  refresh: () => apiFetch<{ ccPriceUsd: number; source: string; refreshed: boolean }>('/cc-price/refresh', { method: 'POST' }),
+};
+
 // ===== ESCROW TEMPLATES =====
 export interface EscrowTemplateConfig {
   serviceTypeId?: string;

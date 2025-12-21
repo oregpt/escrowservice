@@ -16,9 +16,9 @@ import { useState } from "react";
 export default function Dashboard() {
   const { toast } = useToast();
   const [escrowFilter, setEscrowFilter] = useState<'all' | 'org'>('all');
-  // Checkboxes for Organization tab filtering
+  // Role filter checkboxes (apply to both tabs)
   const [showOriginatedByMe, setShowOriginatedByMe] = useState(true);
-  const [showMeAsCounterparty, setShowMeAsCounterparty] = useState(true);
+  const [showImTheProvider, setShowImTheProvider] = useState(true);
 
   // Fetch data from API
   const { data: authData } = useAuth();
@@ -55,26 +55,27 @@ export default function Dashboard() {
     e.partyAOrgId === userOrgId || e.partyBOrgId === userOrgId
   );
 
-  // Further filter org escrows based on checkboxes
-  const filteredOrgEscrows = orgEscrows.filter(e => {
-    const isOriginator = e.createdByUserId === userId || e.partyAUserId === userId;
-    const isCounterparty = e.partyBUserId === userId || (e.partyBOrgId === userOrgId && !isOriginator);
+  // Apply role filter to escrows (works for both tabs)
+  const applyRoleFilter = (escrowList: typeof allActiveEscrows) => {
+    return escrowList.filter(e => {
+      const isOriginator = e.createdByUserId === userId || e.partyAUserId === userId;
+      const isProvider = e.partyBUserId === userId || (e.partyBOrgId === userOrgId && e.partyBUserId === userId);
 
-    // If both checkboxes unchecked, show nothing
-    if (!showOriginatedByMe && !showMeAsCounterparty) return false;
-    // If both checked, show all org escrows
-    if (showOriginatedByMe && showMeAsCounterparty) return true;
-    // If only "Originated by me" checked
-    if (showOriginatedByMe && !showMeAsCounterparty) return isOriginator;
-    // If only "Me as counterparty" checked
-    if (!showOriginatedByMe && showMeAsCounterparty) return isCounterparty;
-    return true;
-  });
+      // If both checkboxes unchecked, show nothing
+      if (!showOriginatedByMe && !showImTheProvider) return false;
+      // If both checked, show all
+      if (showOriginatedByMe && showImTheProvider) return true;
+      // If only "I created" checked
+      if (showOriginatedByMe && !showImTheProvider) return isOriginator;
+      // If only "I'm the provider" checked
+      if (!showOriginatedByMe && showImTheProvider) return isProvider;
+      return true;
+    });
+  };
 
-  // Apply tab filter
-  const activeEscrows = escrowFilter === 'org'
-    ? filteredOrgEscrows
-    : allActiveEscrows;
+  // Apply tab filter, then role filter
+  const baseEscrows = escrowFilter === 'org' ? orgEscrows : allActiveEscrows;
+  const activeEscrows = applyRoleFilter(baseEscrows);
 
   // Total pending count for notification
   const totalPendingCount = assignedToYou.length + assignedToYourOrg.length + openEscrows.length;
@@ -310,31 +311,29 @@ export default function Dashboard() {
                   </TabsList>
                 </Tabs>
 
-                {/* Role filter checkboxes - only show when Organization tab is selected */}
-                {escrowFilter === 'org' && (
-                  <div className="flex items-center gap-6 px-1">
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="originated-by-me"
-                        checked={showOriginatedByMe}
-                        onCheckedChange={(checked) => setShowOriginatedByMe(checked === true)}
-                      />
-                      <Label htmlFor="originated-by-me" className="text-sm text-muted-foreground cursor-pointer">
-                        Originated by me
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="me-as-counterparty"
-                        checked={showMeAsCounterparty}
-                        onCheckedChange={(checked) => setShowMeAsCounterparty(checked === true)}
-                      />
-                      <Label htmlFor="me-as-counterparty" className="text-sm text-muted-foreground cursor-pointer">
-                        Me as counterparty
-                      </Label>
-                    </div>
+                {/* Role filter checkboxes - show for both tabs */}
+                <div className="flex items-center gap-6 px-1">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="originated-by-me"
+                      checked={showOriginatedByMe}
+                      onCheckedChange={(checked) => setShowOriginatedByMe(checked === true)}
+                    />
+                    <Label htmlFor="originated-by-me" className="text-sm text-muted-foreground cursor-pointer">
+                      I created
+                    </Label>
                   </div>
-                )}
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="im-the-provider"
+                      checked={showImTheProvider}
+                      onCheckedChange={(checked) => setShowImTheProvider(checked === true)}
+                    />
+                    <Label htmlFor="im-the-provider" className="text-sm text-muted-foreground cursor-pointer">
+                      I'm the provider
+                    </Label>
+                  </div>
+                </div>
               </div>
             )}
 
