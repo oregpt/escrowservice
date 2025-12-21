@@ -318,6 +318,99 @@ export class AccountService {
     return result.rows.map(this.mapRowToLedgerEntry);
   }
 
+  // Get all accounts for a user (org accounts they have access to + personal accounts)
+  async getAllAccountsForUser(userId: string): Promise<Array<AccountWithTotals & { accountType: 'organization' | 'personal'; organizationName?: string }>> {
+    // Get all organizations the user belongs to
+    const orgQuery = await pool.query(
+      `SELECT
+         a.id, a.user_id, a.organization_id, a.available_balance, a.in_contract_balance,
+         a.currency, a.account_type, a.created_at, a.updated_at,
+         o.name as organization_name
+       FROM accounts a
+       JOIN organizations o ON a.organization_id = o.id
+       WHERE a.user_id IS NULL
+         AND a.organization_id IN (
+           SELECT organization_id FROM org_members WHERE user_id = $1
+         )
+       ORDER BY o.name`,
+      [userId]
+    );
+
+    // Get all personal accounts for the user
+    const personalQuery = await pool.query(
+      `SELECT
+         a.id, a.user_id, a.organization_id, a.available_balance, a.in_contract_balance,
+         a.currency, a.account_type, a.created_at, a.updated_at,
+         o.name as organization_name
+       FROM accounts a
+       JOIN organizations o ON a.organization_id = o.id
+       WHERE a.user_id = $1
+       ORDER BY o.name`,
+      [userId]
+    );
+
+    const accounts: Array<AccountWithTotals & { accountType: 'organization' | 'personal'; organizationName?: string }> = [];
+
+    // Add org accounts
+    for (const row of orgQuery.rows) {
+      const account = this.mapRowToAccount(row);
+      accounts.push({
+        ...account,
+        totalBalance: account.availableBalance + account.inContractBalance,
+        ownerType: 'organization',
+        accountType: 'organization',
+        organizationName: row.organization_name,
+      });
+    }
+
+    // Add personal accounts
+    for (const row of personalQuery.rows) {
+      const account = this.mapRowToAccount(row);
+      accounts.push({
+        ...account,
+        totalBalance: account.availableBalance + account.inContractBalance,
+        ownerType: 'user',
+        accountType: 'personal',
+        organizationName: row.organization_name,
+      });
+    }
+
+    return accounts;
+  }
+
+  // Get or create personal account for user within an org
+  async getOrCreatePersonalAccount(userId: string, orgId: string): Promise<AccountWithTotals> {
+    // Check if personal account exists
+    const existing = await pool.query(
+      `SELECT * FROM accounts WHERE user_id = $1 AND organization_id = $2 AND currency = 'USD'`,
+      [userId, orgId]
+    );
+
+    if (existing.rows.length > 0) {
+      const account = this.mapRowToAccount(existing.rows[0]);
+      return {
+        ...account,
+        totalBalance: account.availableBalance + account.inContractBalance,
+        ownerType: 'user',
+      };
+    }
+
+    // Create personal account
+    const result = await pool.query(
+      `INSERT INTO accounts (user_id, organization_id, currency, account_type)
+       VALUES ($1, $2, 'USD', 'personal')
+       RETURNING *`,
+      [userId, orgId]
+    );
+
+    const account = this.mapRowToAccount(result.rows[0]);
+    return {
+      ...account,
+      totalBalance: 0,
+      ownerType: 'user',
+    };
+  }
+
   // Helper: Map DB row to Account
   private mapRowToAccount(row: any): Account {
     return {

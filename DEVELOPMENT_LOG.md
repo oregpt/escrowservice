@@ -5,11 +5,115 @@ EscrowService is a full-stack escrow platform built with React (Vite) frontend a
 
 ---
 
-## Latest Session: December 21, 2025
+## Latest Session: December 21, 2025 (Continued)
+
+### Account Restructure: Per-User-Per-Org Wallets
+
+Implemented a new account structure where users have personal wallets within each organization they belong to.
+
+**Account Types:**
+- **Organization Wallet** (`account_type='organization'`): Shared wallet for the org, `user_id=NULL`
+- **Personal Wallet** (`account_type='personal'`): Per-user-per-org wallet, `user_id` + `organization_id` both set
+
+**Example:** If a user belongs to 3 organizations, they have:
+- 3 Organization Wallets (shared with org members)
+- 3 Personal Wallets (one per org, only they can use)
+
+#### Database Changes (`migrate.ts`)
+- Dropped old `account_owner_check` constraint (prevented having both user_id + org_id)
+- Added new `account_type_check` constraint requiring `organization_id IS NOT NULL`
+- Added `account_type` column: `'organization'` or `'personal'`
+- Created unique index on `(organization_id, user_id, currency)`
+- Data migration: Existing personal-only accounts assigned to user's primary org
+
+#### Backend API Changes
+
+**`account.service.ts`:**
+- Added `getAllAccountsForUser(userId)`: Returns all org + personal accounts with org names
+- Added `getOrCreatePersonalAccount(userId, orgId)`: Get/create personal wallet within org
+
+**`account.routes.ts`:**
+- Added `GET /api/accounts/all`: Returns all user's accounts with `accountType` and `organizationName`
+- Updated `POST /api/accounts/deposit`: Now accepts `orgId` and `accountType` to specify target wallet
+
+**`stripe.service.ts`:**
+- Updated `createCheckoutSession()` to accept `{ accountType, orgId }` metadata
+- Updated webhook handler to credit the correct account based on metadata
+
+#### Frontend Changes
+
+**`client/src/lib/api.ts`:**
+- Added `AccountWithOrgInfo` interface with `accountType` and `organizationName`
+- Added `accounts.getAll()` method
+- Added `accounts.depositToAccount(amount, orgId, accountType, currency)` method
+
+**`client/src/hooks/use-api.ts`:**
+- Added `useAllAccounts()` hook
+- Added `useDepositToAccount()` mutation
+
+**`client/src/pages/account.tsx`:**
+- New "Balances" card with filter checkboxes: Organization / Personal
+- Account list showing all wallets with type badges and org names
+- Summary totals update based on filter selection
+- "Add Funds" now has wallet selector dropdown
+- Quick Stats show wallet counts by type
+
+**UI Filter Behavior:**
+- Both checked (default): Shows all accounts
+- Only Organization: Shows org wallets only
+- Only Personal: Shows personal wallets only
+- Totals reflect filtered accounts
+
+---
+
+## Earlier: December 21, 2025
 
 ### Features Implemented This Session
 
-#### 1. Confirmation Forms with Attachments (NEW)
+#### 1. Password Reset (Forgot Password) Feature
+Complete email-based password reset flow.
+
+**Backend:**
+- `backend/src/db/migrate.ts`: Added `password_reset_tokens` table
+- `backend/src/routes/auth.routes.ts`: Added endpoints:
+  - `POST /api/auth/forgot-password` - Request reset email
+  - `POST /api/auth/reset-password` - Reset with token
+  - `GET /api/auth/reset-password/:token` - Validate token
+- `backend/src/services/email.service.ts`: Nodemailer-based email service
+
+**Frontend:**
+- `client/src/pages/reset-password.tsx`: Reset password page (accessed via email link)
+- `client/src/components/layout/Header.tsx`: Added "Forgot password?" link in sign in dialog
+- `client/src/hooks/use-api.ts`: Added `useForgotPassword`, `useValidateResetToken`, `useResetPassword` hooks
+- `client/src/lib/api.ts`: Added auth API methods for password reset
+
+**Environment Variables (for email):**
+```
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USER=your@email.com
+SMTP_PASS=your-password
+SMTP_FROM=noreply@yourapp.com
+```
+
+**Note:** If SMTP not configured, reset tokens are logged to console for development.
+
+---
+
+#### 2. Sign Up Button & Improved Auth Flow
+- Added separate **Sign In** and **Sign Up** buttons in header (was only Sign In)
+- Sign Up shows: Username, Email, Password, Display Name (optional)
+- "Save Account" banner now works without existing session (uses register instead of convert)
+
+---
+
+#### 3. Platform Admin Only: Create Organization
+- "Create Organization" button in org dropdown now only visible to `platform_admin` role
+- Previously visible to both `admin` and `platform_admin`
+
+---
+
+#### 4. Confirmation Forms with Attachments
 Added modal-based confirmation forms for Fund and Confirm actions that support notes, file attachments, and escrow-until-completion option.
 
 **The Feature:**

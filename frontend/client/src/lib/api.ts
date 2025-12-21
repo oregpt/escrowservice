@@ -115,11 +115,36 @@ export const auth = {
     clearSession();
     return res;
   }),
+
+  // Password reset
+  forgotPassword: (email: string) =>
+    apiFetch<{ message: string }>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  validateResetToken: (token: string) =>
+    apiFetch<{ valid: boolean; email: string }>(`/auth/reset-password/${token}`),
+
+  resetPassword: (token: string, password: string) =>
+    apiFetch<{ message: string }>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    }),
 };
+
+// Extended account type with org info
+export interface AccountWithOrgInfo extends AccountWithTotals {
+  accountType: 'organization' | 'personal';
+  organizationName?: string;
+}
 
 // ===== ACCOUNTS =====
 export const accounts = {
   getMe: () => apiFetch<AccountWithTotals>('/accounts/me'),
+
+  // Get all accounts for user (org + personal wallets)
+  getAll: () => apiFetch<AccountWithOrgInfo[]>('/accounts/all'),
 
   getLedger: (limit = 50, offset = 0) =>
     apiFetch<{ entries: LedgerEntry[]; account: AccountWithTotals }>(
@@ -131,6 +156,13 @@ export const accounts = {
     apiFetch<{ sessionId: string; checkoutUrl: string }>('/accounts/deposit', {
       method: 'POST',
       body: JSON.stringify({ amount, currency }),
+    }),
+
+  // New deposit method with account type selection
+  depositToAccount: (amount: number, orgId: string, accountType: 'organization' | 'personal', currency = 'usd') =>
+    apiFetch<{ sessionId: string; checkoutUrl: string }>('/accounts/deposit', {
+      method: 'POST',
+      body: JSON.stringify({ amount, currency, orgId, accountType }),
     }),
 
   getPayments: (limit = 20) => apiFetch<StripePayment[]>(`/accounts/payments?limit=${limit}`),

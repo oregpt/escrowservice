@@ -56,22 +56,33 @@ export function SaveAccountBanner() {
     }
 
     try {
-      await convertAccount.mutateAsync({
-        username: username.trim(),
-        password,
-        email: email.trim(),
-        displayName: displayName.trim() || undefined,
-      });
+      // If user has a session, convert it. Otherwise, create a new account.
+      if (user?.id) {
+        await convertAccount.mutateAsync({
+          username: username.trim(),
+          password,
+          email: email.trim(),
+          displayName: displayName.trim() || undefined,
+        });
+      } else {
+        // No session - create a fresh account
+        await register.mutateAsync({
+          username: username.trim(),
+          password,
+          email: email.trim(),
+          displayName: displayName.trim() || undefined,
+        });
+      }
       // Force immediate refetch of auth data
       await refetchAuth();
       toast({
-        title: 'Account saved!',
-        description: 'Your progress has been saved. You can now log in anytime.',
+        title: 'Account created!',
+        description: 'Your account has been created. You can now log in anytime.',
       });
       setOpen(false);
       resetForm();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save account');
+      setError(err instanceof Error ? err.message : 'Failed to create account');
     }
   };
 

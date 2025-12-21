@@ -11,12 +11,26 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
 export class StripeService {
   // Create checkout session for account deposit
+  // depositOptions: { accountType: 'organization' | 'personal', orgId: string }
   async createCheckoutSession(
     userId: string,
     amount: number,
     currency: string = 'usd',
-    escrowId?: string
+    depositOptions?: { accountType?: 'organization' | 'personal'; orgId?: string } | string
   ): Promise<{ sessionId: string; url: string }> {
+    // Handle legacy escrowId parameter (string) vs new depositOptions object
+    let escrowId: string | undefined;
+    let accountType: 'organization' | 'personal' = 'organization';
+    let orgId: string | undefined;
+
+    if (typeof depositOptions === 'string') {
+      // Legacy: depositOptions is escrowId
+      escrowId = depositOptions;
+    } else if (depositOptions) {
+      accountType = depositOptions.accountType || 'organization';
+      orgId = depositOptions.orgId;
+    }
+
     // Create checkout session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
@@ -28,7 +42,7 @@ export class StripeService {
               name: escrowId ? 'Escrow Funding' : 'Account Deposit',
               description: escrowId
                 ? `Funding for escrow ${escrowId}`
-                : 'Deposit to your escrow account',
+                : `Deposit to your ${accountType === 'personal' ? 'personal' : 'organization'} wallet`,
             },
             unit_amount: Math.round(amount * 100), // Stripe uses cents
           },
@@ -41,6 +55,8 @@ export class StripeService {
       metadata: {
         userId,
         escrowId: escrowId || '',
+        accountType,
+        orgId: orgId || '',
         type: escrowId ? 'escrow_funding' : 'account_deposit',
       },
     });
@@ -55,7 +71,7 @@ export class StripeService {
         escrowId || null,
         amount,
         currency.toUpperCase(),
-        JSON.stringify({ type: escrowId ? 'escrow_funding' : 'account_deposit' }),
+        JSON.stringify({ type: escrowId ? 'escrow_funding' : 'account_deposit', accountType, orgId }),
       ]
     );
 
@@ -100,6 +116,8 @@ export class StripeService {
     return withTransaction(async (client) => {
       const userId = session.metadata?.userId;
       const escrowId = session.metadata?.escrowId || null;
+      const accountType = session.metadata?.accountType || 'organization';
+      const orgId = session.metadata?.orgId;
       const amount = (session.amount_total || 0) / 100; // Convert from cents
 
       if (!userId) {
@@ -114,8 +132,21 @@ export class StripeService {
         [session.payment_intent, session.id]
       );
 
-      // Get or create user's org account
-      const account = await accountService.getOrCreateAccountForUser(userId);
+      // Determine which account to credit
+      let account;
+      if (orgId && accountType === 'personal') {
+        // Credit personal wallet within the org
+        account = await accountService.getOrCreatePersonalAccount(userId, orgId);
+      } else if (orgId && accountType === 'organization') {
+        // Credit organization wallet
+        account = await accountService.getAccountByOrgId(orgId);
+        if (!account) {
+          account = await accountService.createOrgAccount(orgId);
+        }
+      } else {
+        // Legacy: get user's default account
+        account = await accountService.getOrCreateAccountForUser(userId);
+      }
 
       // Deposit to account
       await accountService.deposit(

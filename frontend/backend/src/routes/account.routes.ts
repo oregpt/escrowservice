@@ -6,7 +6,7 @@ import type { ApiResponse, AccountWithTotals, LedgerEntry } from '../types/index
 
 const router = Router();
 
-// Get current user's account (via their organization)
+// Get current user's primary account (via their organization)
 router.get('/me', requireAuth, async (req, res) => {
   try {
     const userId = req.userId!;
@@ -15,6 +15,26 @@ router.get('/me', requireAuth, async (req, res) => {
     const response: ApiResponse<AccountWithTotals> = {
       success: true,
       data: account,
+    };
+    res.json(response);
+  } catch (error) {
+    const response: ApiResponse<null> = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+    res.status(500).json(response);
+  }
+});
+
+// Get all accounts for user (org + personal wallets)
+router.get('/all', requireAuth, async (req, res) => {
+  try {
+    const userId = req.userId!;
+    const accounts = await accountService.getAllAccountsForUser(userId);
+
+    const response: ApiResponse<typeof accounts> = {
+      success: true,
+      data: accounts,
     };
     res.json(response);
   } catch (error) {
@@ -51,10 +71,12 @@ router.get('/me/ledger', requireAuth, async (req, res) => {
 });
 
 // Create deposit checkout session
+// accountType: 'organization' or 'personal' - which wallet to deposit to
+// orgId: required - which organization's wallet (org or personal-in-org)
 router.post('/deposit', requireAuth, async (req, res) => {
   try {
     const userId = req.userId!;
-    const { amount, currency = 'usd' } = req.body;
+    const { amount, currency = 'usd', accountType = 'organization', orgId } = req.body;
 
     if (!amount || amount <= 0) {
       return res.status(400).json({
@@ -63,10 +85,18 @@ router.post('/deposit', requireAuth, async (req, res) => {
       });
     }
 
+    if (!orgId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Organization ID is required',
+      });
+    }
+
     const { sessionId, url } = await stripeService.createCheckoutSession(
       userId,
       amount,
-      currency
+      currency,
+      { accountType, orgId } // Pass metadata for webhook
     );
 
     const response: ApiResponse<{ sessionId: string; checkoutUrl: string }> = {

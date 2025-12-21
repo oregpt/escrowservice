@@ -20,6 +20,7 @@ import ServiceTypesPage from "@/pages/admin/service-types";
 import AdminOrganizationsPage from "@/pages/admin/organizations";
 import AdminDashboard from "@/pages/admin/dashboard";
 import AdminSettingsPage from "@/pages/admin/settings";
+import ResetPasswordPage from "@/pages/reset-password";
 
 function Router() {
   return (
@@ -33,6 +34,7 @@ function Router() {
       <Route path="/org/:id" component={OrganizationPage} />
       <Route path="/payment/success" component={PaymentSuccessPage} />
       <Route path="/payment/cancel" component={PaymentCancelPage} />
+      <Route path="/reset-password" component={ResetPasswordPage} />
 
       {/* Admin Routes */}
       <Route path="/admin" component={AdminDashboard} />

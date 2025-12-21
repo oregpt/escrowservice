@@ -563,6 +563,109 @@ BEGIN
         ALTER TABLE attachments ADD COLUMN notes TEXT;
     END IF;
 END $$;
+
+-- Password Reset Tokens table
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token VARCHAR(255) NOT NULL UNIQUE,
+    expires_at TIMESTAMP NOT NULL,
+    used_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Index for token lookup
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_password_reset_tokens_token') THEN
+        CREATE INDEX idx_password_reset_tokens_token ON password_reset_tokens(token) WHERE used_at IS NULL;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_password_reset_tokens_user') THEN
+        CREATE INDEX idx_password_reset_tokens_user ON password_reset_tokens(user_id);
+    END IF;
+END $$;
+
+-- Cleanup expired tokens (can be run periodically)
+DELETE FROM password_reset_tokens WHERE expires_at < NOW() - INTERVAL '24 hours';
+
+-- ============================================
+-- ACCOUNT RESTRUCTURE: Per-User-Per-Org Personal Wallets
+-- ============================================
+-- Account types:
+--   1. organization_id only = Org Shared Wallet (all org members can use)
+--   2. user_id + organization_id = Personal Wallet within Org (only that user)
+-- Note: Global personal accounts (user_id only) are deprecated
+
+-- STEP 1: Drop old constraint FIRST (it blocks having both user_id + org_id)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'account_owner_check') THEN
+        ALTER TABLE accounts DROP CONSTRAINT account_owner_check;
+    END IF;
+END $$;
+
+-- STEP 1b: Drop old unique constraints (will be replaced with new one)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'accounts_organization_id_currency_key') THEN
+        ALTER TABLE accounts DROP CONSTRAINT accounts_organization_id_currency_key;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'accounts_user_id_currency_key') THEN
+        ALTER TABLE accounts DROP CONSTRAINT accounts_user_id_currency_key;
+    END IF;
+END $$;
+
+-- STEP 2: Migrate existing personal-only accounts (user_id but no org_id)
+-- to belong to the user's primary organization
+UPDATE accounts a
+SET organization_id = u.primary_org_id
+FROM users u
+WHERE a.user_id = u.id
+  AND a.organization_id IS NULL
+  AND u.primary_org_id IS NOT NULL;
+
+-- STEP 3: For accounts where user has no primary_org_id, assign to first org they belong to
+UPDATE accounts a
+SET organization_id = (
+    SELECT om.organization_id
+    FROM org_members om
+    WHERE om.user_id = a.user_id
+    LIMIT 1
+)
+WHERE a.user_id IS NOT NULL
+  AND a.organization_id IS NULL;
+
+-- STEP 4: Add new constraint: org_id required (personal global accounts deprecated)
+-- Either: org only (shared) OR user+org (personal within org)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'account_type_check') THEN
+        ALTER TABLE accounts ADD CONSTRAINT account_type_check CHECK (
+            organization_id IS NOT NULL
+        );
+    END IF;
+END $$;
+
+-- STEP 5: Add new unique constraint for org+user+currency combo
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'accounts_org_user_currency_unique') THEN
+        CREATE UNIQUE INDEX accounts_org_user_currency_unique ON accounts(organization_id, user_id, currency);
+    END IF;
+END $$;
+
+-- Add account_type column for easy querying
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'accounts' AND column_name = 'account_type') THEN
+        ALTER TABLE accounts ADD COLUMN account_type VARCHAR(20) DEFAULT 'organization';
+    END IF;
+END $$;
+
+-- Update existing accounts to set account_type
+UPDATE accounts SET account_type = 'personal' WHERE user_id IS NOT NULL AND organization_id IS NOT NULL;
+UPDATE accounts SET account_type = 'organization' WHERE user_id IS NULL AND organization_id IS NOT NULL;
 `;
 
 const SEED_SERVICE_TYPES = `

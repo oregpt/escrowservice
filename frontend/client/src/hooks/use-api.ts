@@ -137,6 +137,42 @@ export function useLogout() {
   });
 }
 
+// Request password reset email
+export function useForgotPassword() {
+  return useMutation({
+    mutationFn: async (email: string) => {
+      const res = await auth.forgotPassword(email);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+  });
+}
+
+// Validate reset token
+export function useValidateResetToken(token: string) {
+  return useQuery({
+    queryKey: ['reset-token', token],
+    queryFn: async () => {
+      const res = await auth.validateResetToken(token);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    enabled: !!token,
+    retry: false,
+  });
+}
+
+// Reset password with token
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: async ({ token, password }: { token: string; password: string }) => {
+      const res = await auth.resetPassword(token, password);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+  });
+}
+
 export function useCreateSession() {
   const queryClient = useQueryClient();
 
@@ -164,6 +200,17 @@ export function useAccount() {
   });
 }
 
+// Get all accounts for user (org + personal wallets)
+export function useAllAccounts() {
+  return useQuery({
+    queryKey: ['accounts', 'all'],
+    queryFn: async () => {
+      const res = await accounts.getAll();
+      return res.success ? res.data : [];
+    },
+  });
+}
+
 export function useLedger(limit = 50, offset = 0) {
   return useQuery({
     queryKey: ['account', 'ledger', limit, offset],
@@ -180,6 +227,31 @@ export function useCreateDeposit() {
       const res = await accounts.createDeposit(amount, currency);
       if (!res.success) throw new Error(res.error);
       return res.data;
+    },
+  });
+}
+
+// New deposit with account type selection
+export function useDepositToAccount() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      amount,
+      orgId,
+      accountType,
+      currency = 'usd',
+    }: {
+      amount: number;
+      orgId: string;
+      accountType: 'organization' | 'personal';
+      currency?: string;
+    }) => {
+      const res = await accounts.depositToAccount(amount, orgId, accountType, currency);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
     },
   });
 }

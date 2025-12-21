@@ -23,7 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useAuth, useOrganizations, useLogout, useLogin } from "@/hooks/use-api";
+import { useAuth, useOrganizations, useLogout, useLogin, useRegister, useForgotPassword } from "@/hooks/use-api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
@@ -35,10 +35,16 @@ export function Header() {
   const { data: orgs, refetch: refetchOrgs } = useOrganizations();
   const logout = useLogout();
   const login = useLogin();
+  const register = useRegister();
+  const forgotPassword = useForgotPassword();
 
   const [loginOpen, setLoginOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
+  const [forgotEmailSent, setForgotEmailSent] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
 
@@ -85,6 +91,35 @@ export function Header() {
     return 'U';
   };
 
+  const resetAuthForm = () => {
+    setUsername('');
+    setPassword('');
+    setEmail('');
+    setDisplayName('');
+    setError('');
+    setForgotEmailSent(false);
+    setAuthMode('signin');
+  };
+
+  const handleForgotPassword = async () => {
+    setError('');
+    if (!email.trim()) {
+      setError('Email is required');
+      return;
+    }
+
+    try {
+      await forgotPassword.mutateAsync(email.trim());
+      setForgotEmailSent(true);
+      toast({
+        title: 'Email sent!',
+        description: 'Check your inbox for the password reset link.',
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send reset email');
+    }
+  };
+
   const handleLogin = async () => {
     setError('');
     if (!username.trim() || !password) {
@@ -109,10 +144,52 @@ export function Header() {
         description: `Logged in as ${result?.user?.displayName || result?.user?.username || 'User'}.`,
       });
       setLoginOpen(false);
-      setUsername('');
-      setPassword('');
+      resetAuthForm();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid username or password');
+    }
+  };
+
+  const handleSignup = async () => {
+    setError('');
+    if (!username.trim()) {
+      setError('Username is required');
+      return;
+    }
+    if (!email.trim()) {
+      setError('Email is required');
+      return;
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
+    try {
+      const result = await register.mutateAsync({
+        username: username.trim(),
+        password,
+        email: email.trim(),
+        displayName: displayName.trim() || undefined,
+      });
+
+      // Clear ALL cached queries to force fresh data
+      queryClient.clear();
+
+      // Refetch auth and orgs with fresh session
+      await Promise.all([
+        refetchAuth(),
+        refetchOrgs(),
+      ]);
+
+      toast({
+        title: 'Account created!',
+        description: `Welcome, ${result?.user?.displayName || result?.user?.username || 'User'}!`,
+      });
+      setLoginOpen(false);
+      resetAuthForm();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create account');
     }
   };
 
@@ -212,7 +289,7 @@ export function Header() {
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuSeparator />
-                  {isAdmin && (
+                  {user?.role === 'platform_admin' && (
                     <DropdownMenuItem asChild>
                       <Link href="/org/new" className="flex items-center gap-2">
                         <Plus className="h-4 w-4" />
@@ -224,20 +301,36 @@ export function Header() {
               </DropdownMenu>
             )}
 
-            {/* Login button for non-authenticated users */}
+            {/* Auth buttons for non-authenticated users */}
             {!user?.isAuthenticated && (
-              <Dialog open={loginOpen} onOpenChange={setLoginOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <LogIn className="h-4 w-4 mr-2" />
-                    Sign In
-                  </Button>
-                </DialogTrigger>
+              <Dialog open={loginOpen} onOpenChange={(open) => {
+                setLoginOpen(open);
+                if (!open) resetAuthForm();
+              }}>
+                <div className="flex items-center gap-2">
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm" onClick={() => setAuthMode('signin')}>
+                      <LogIn className="h-4 w-4 mr-2" />
+                      Sign In
+                    </Button>
+                  </DialogTrigger>
+                  <DialogTrigger asChild>
+                    <Button size="sm" onClick={() => setAuthMode('signup')}>
+                      Sign Up
+                    </Button>
+                  </DialogTrigger>
+                </div>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Sign In</DialogTitle>
+                    <DialogTitle>
+                      {authMode === 'signin' ? 'Sign In' : authMode === 'signup' ? 'Create Account' : 'Reset Password'}
+                    </DialogTitle>
                     <DialogDescription>
-                      Enter your credentials to access your account.
+                      {authMode === 'signin'
+                        ? 'Enter your credentials to access your account.'
+                        : authMode === 'signup'
+                        ? 'Create an account to save your deals and track progress.'
+                        : 'Enter your email to receive a password reset link.'}
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 py-4">
@@ -246,37 +339,197 @@ export function Header() {
                         <AlertDescription>{error}</AlertDescription>
                       </Alert>
                     )}
-                    <div className="space-y-2">
-                      <Label htmlFor="login-username">Username</Label>
-                      <Input
-                        id="login-username"
-                        placeholder="Enter your username"
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-                        disabled={login.isPending}
-                      />
+
+                    {/* Forgot Password Mode */}
+                    {authMode === 'forgot' && (
+                      <>
+                        {forgotEmailSent ? (
+                          <div className="text-center py-4">
+                            <div className="text-green-600 mb-2">Email sent!</div>
+                            <p className="text-sm text-muted-foreground">
+                              Check your inbox for the password reset link. The link will expire in 1 hour.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <Label htmlFor="forgot-email">Email</Label>
+                            <Input
+                              id="forgot-email"
+                              type="email"
+                              placeholder="your@email.com"
+                              value={email}
+                              onChange={(e) => setEmail(e.target.value)}
+                              onKeyDown={(e) => e.key === 'Enter' && handleForgotPassword()}
+                              disabled={forgotPassword.isPending}
+                            />
+                          </div>
+                        )}
+                        {!forgotEmailSent && (
+                          <Button
+                            className="w-full"
+                            onClick={handleForgotPassword}
+                            disabled={forgotPassword.isPending}
+                          >
+                            {forgotPassword.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                            Send Reset Link
+                          </Button>
+                        )}
+                      </>
+                    )}
+
+                    {/* Sign In Mode */}
+                    {authMode === 'signin' && (
+                      <>
+                        <div className="space-y-2">
+                          <Label htmlFor="auth-username">Username</Label>
+                          <Input
+                            id="auth-username"
+                            placeholder="Enter your username"
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+                            disabled={login.isPending}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor="auth-password">Password</Label>
+                            <button
+                              type="button"
+                              className="text-xs text-primary hover:underline"
+                              onClick={() => {
+                                setAuthMode('forgot');
+                                setError('');
+                              }}
+                            >
+                              Forgot password?
+                            </button>
+                          </div>
+                          <Input
+                            id="auth-password"
+                            type="password"
+                            placeholder="Enter your password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+                            disabled={login.isPending}
+                          />
+                        </div>
+                        <Button
+                          className="w-full"
+                          onClick={handleLogin}
+                          disabled={login.isPending}
+                        >
+                          {login.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                          Sign In
+                        </Button>
+                      </>
+                    )}
+
+                    {/* Sign Up Mode */}
+                    {authMode === 'signup' && (
+                      <>
+                        <div className="space-y-2">
+                          <Label htmlFor="auth-username">Username</Label>
+                          <Input
+                            id="auth-username"
+                            placeholder="Choose a username"
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
+                            disabled={register.isPending}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="auth-email">Email</Label>
+                          <Input
+                            id="auth-email"
+                            type="email"
+                            placeholder="your@email.com"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            disabled={register.isPending}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="auth-password">Password</Label>
+                          <Input
+                            id="auth-password"
+                            type="password"
+                            placeholder="Choose a password (min 6 characters)"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            disabled={register.isPending}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="auth-displayName">Display Name (optional)</Label>
+                          <Input
+                            id="auth-displayName"
+                            placeholder="How should we call you?"
+                            value={displayName}
+                            onChange={(e) => setDisplayName(e.target.value)}
+                            disabled={register.isPending}
+                          />
+                        </div>
+                        <Button
+                          className="w-full"
+                          onClick={handleSignup}
+                          disabled={register.isPending}
+                        >
+                          {register.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                          Create Account
+                        </Button>
+                      </>
+                    )}
+
+                    {/* Toggle between modes */}
+                    <div className="text-center text-sm text-muted-foreground">
+                      {authMode === 'signin' && (
+                        <>
+                          Don't have an account?{' '}
+                          <button
+                            type="button"
+                            className="text-primary hover:underline"
+                            onClick={() => {
+                              setAuthMode('signup');
+                              setError('');
+                            }}
+                          >
+                            Sign up
+                          </button>
+                        </>
+                      )}
+                      {authMode === 'signup' && (
+                        <>
+                          Already have an account?{' '}
+                          <button
+                            type="button"
+                            className="text-primary hover:underline"
+                            onClick={() => {
+                              setAuthMode('signin');
+                              setError('');
+                            }}
+                          >
+                            Sign in
+                          </button>
+                        </>
+                      )}
+                      {authMode === 'forgot' && (
+                        <>
+                          <button
+                            type="button"
+                            className="text-primary hover:underline"
+                            onClick={() => {
+                              setAuthMode('signin');
+                              setError('');
+                              setForgotEmailSent(false);
+                            }}
+                          >
+                            Back to sign in
+                          </button>
+                        </>
+                      )}
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="login-password">Password</Label>
-                      <Input
-                        id="login-password"
-                        type="password"
-                        placeholder="Enter your password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-                        disabled={login.isPending}
-                      />
-                    </div>
-                    <Button
-                      className="w-full"
-                      onClick={handleLogin}
-                      disabled={login.isPending}
-                    >
-                      {login.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                      Sign In
-                    </Button>
                   </div>
                 </DialogContent>
               </Dialog>
