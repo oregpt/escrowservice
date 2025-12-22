@@ -171,17 +171,17 @@ export function ExecuteTrafficPurchaseModal({ escrow, open, onOpenChange }: Exec
           // Show result after execution
           <div className="space-y-4 py-4">
             {result.success ? (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 overflow-hidden">
                 <div className="flex items-center gap-2 mb-3">
-                  <CheckCircle className="h-5 w-5 text-emerald-600" />
+                  <CheckCircle className="h-5 w-5 text-emerald-600 shrink-0" />
                   <span className="font-medium text-emerald-900">Traffic Purchase Successful</span>
                 </div>
 
                 {result.trackingId && (
                   <div className="space-y-2">
                     <Label className="text-xs text-emerald-700">Tracking ID</Label>
-                    <div className="flex items-center gap-2">
-                      <code className="flex-1 bg-white px-3 py-2 rounded border border-emerald-200 text-sm font-mono break-all">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <code className="flex-1 min-w-0 bg-white px-3 py-2 rounded border border-emerald-200 text-sm font-mono break-all overflow-hidden">
                         {result.trackingId}
                       </code>
                       <Button
@@ -197,9 +197,9 @@ export function ExecuteTrafficPurchaseModal({ escrow, open, onOpenChange }: Exec
                 )}
 
                 {result.response && Object.keys(result.response).length > 0 && (
-                  <div className="mt-4">
+                  <div className="mt-4 min-w-0">
                     <Label className="text-xs text-emerald-700">Response Details</Label>
-                    <pre className="mt-2 bg-white p-3 rounded border border-emerald-200 text-xs overflow-auto max-h-48">
+                    <pre className="mt-2 bg-white p-3 rounded border border-emerald-200 text-xs overflow-x-auto max-h-48 whitespace-pre-wrap break-all">
                       {JSON.stringify(result.response, null, 2)}
                     </pre>
                   </div>
