@@ -1095,6 +1095,23 @@ export function useExecuteTrafficPurchase() {
     onSuccess: (_data, variables) => {
       // Refresh escrow to see updated traffic request status
       queryClient.invalidateQueries({ queryKey: ['escrow', variables.escrowId] });
+      // Also refresh traffic purchase status
+      queryClient.invalidateQueries({ queryKey: ['traffic-purchase-status', variables.escrowId] });
     },
+  });
+}
+
+// Get traffic purchase status for an escrow (for TRAFFIC_BUY escrows)
+export function useTrafficPurchaseStatus(escrowId: string | undefined, serviceTypeId?: string) {
+  return useQuery({
+    queryKey: ['traffic-purchase-status', escrowId],
+    queryFn: async () => {
+      if (!escrowId) return null;
+      const res = await escrows.getTrafficPurchaseStatus(escrowId);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    // Only fetch for TRAFFIC_BUY escrows
+    enabled: !!escrowId && serviceTypeId === 'TRAFFIC_BUY',
   });
 }

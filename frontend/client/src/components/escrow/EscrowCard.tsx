@@ -7,6 +7,7 @@ import { ArrowRight, Clock, Shield, Globe, Loader2, CheckCircle, DollarSign, XCi
 import type { EscrowCardProps } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ConfirmationFormModal, type ConfirmationStep } from "./ConfirmationFormModal";
+import { useTrafficPurchaseStatus } from "@/hooks/use-api";
 
 const STATUS_COLORS: Record<string, string> = {
   CREATED: "bg-slate-100 text-slate-700 border-slate-200",
@@ -33,6 +34,8 @@ interface EscrowCardWithModalProps extends EscrowCardProps {
   canExecuteTraffic?: boolean;
   onExecuteTraffic?: () => void;
   isExecutingTraffic?: boolean;
+  // Service type ID - needed for traffic purchase status check
+  serviceTypeId?: string;
 }
 
 export function EscrowCard({
@@ -65,11 +68,16 @@ export function EscrowCard({
   canExecuteTraffic,
   onExecuteTraffic,
   isExecutingTraffic,
+  serviceTypeId,
 }: EscrowCardWithModalProps) {
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [modalStep, setModalStep] = useState<ConfirmationStep | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Check traffic purchase status for TRAFFIC_BUY escrows
+  const { data: trafficPurchaseStatus } = useTrafficPurchaseStatus(id, serviceTypeId);
+  const trafficAlreadyExecuted = trafficPurchaseStatus?.successful;
 
   // Determine if any action is available
   const hasActions = canAccept || canFund || canConfirm || canCancel;
@@ -237,22 +245,34 @@ export function EscrowCard({
               )}
               {/* Execute Purchase button - for TRAFFIC_BUY escrows */}
               {canExecuteTraffic && onExecuteTraffic && (
-                <Button
-                  size="sm"
-                  className="h-8 text-xs bg-purple-600 hover:bg-purple-700"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    onExecuteTraffic();
-                  }}
-                  disabled={isExecutingTraffic}
-                >
-                  {isExecutingTraffic ? (
-                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                  ) : (
-                    <Zap className="h-3 w-3 mr-1" />
-                  )}
-                  Execute Purchase
-                </Button>
+                trafficAlreadyExecuted ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs border-emerald-200 text-emerald-700"
+                    disabled
+                  >
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    Executed
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs bg-purple-600 hover:bg-purple-700"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      onExecuteTraffic();
+                    }}
+                    disabled={isExecutingTraffic}
+                  >
+                    {isExecutingTraffic ? (
+                      <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                    ) : (
+                      <Zap className="h-3 w-3 mr-1" />
+                    )}
+                    Execute Purchase
+                  </Button>
+                )
               )}
               <Link href={`/escrow/${id}`}>
                 <Button variant="ghost" size="sm" className="h-8 text-xs hover:bg-slate-100 hover:text-slate-900 group">

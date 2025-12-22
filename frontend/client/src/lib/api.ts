@@ -250,6 +250,10 @@ export const escrows = {
       method: 'POST',
       body: JSON.stringify({ message }),
     }),
+
+  // Traffic purchase status (for TRAFFIC_BUY escrows)
+  getTrafficPurchaseStatus: (id: string) =>
+    apiFetch<TrafficPurchaseStatus>(`/escrows/${id}/traffic-purchase-status`),
 };
 
 // ===== ATTACHMENTS =====
@@ -650,6 +654,14 @@ export interface TrafficPurchaseResponse {
   trackingId?: string;
   response?: Record<string, any>;  // Full API response with evidence IDs
   error?: string;
+}
+
+export interface TrafficPurchaseStatus {
+  executed: boolean;
+  successful?: boolean;
+  executedAt?: string;
+  trackingId?: string;
+  cantonResponse?: Record<string, any>;
 }
 
 export const trafficPurchase = {

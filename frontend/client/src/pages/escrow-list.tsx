@@ -216,6 +216,7 @@ export default function EscrowList() {
     return {
       id: escrow.id,
       serviceType: escrow.serviceTypeId as "TRAFFIC_BUY" | "DOCUMENT_DELIVERY" | "API_KEY_EXCHANGE" | "CUSTOM",
+      serviceTypeId: escrow.serviceTypeId,
       status: escrow.status as "CREATED" | "PENDING_ACCEPTANCE" | "PENDING_FUNDING" | "FUNDED" | "PARTY_B_CONFIRMED" | "PARTY_A_CONFIRMED" | "COMPLETED" | "CANCELED" | "EXPIRED" | "DISPUTED",
       amount: escrow.amount,
       currency: escrow.currency,

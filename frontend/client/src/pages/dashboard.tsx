@@ -470,6 +470,7 @@ export default function Dashboard() {
                       key={escrow.id}
                       id={escrow.id}
                       serviceType={escrow.serviceTypeId}
+                      serviceTypeId={escrow.serviceTypeId}
                       status={escrow.status}
                       amount={escrow.amount}
                       currency={escrow.currency}

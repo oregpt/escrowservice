@@ -3,6 +3,7 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { EscrowTimeline } from "@/components/escrow/EscrowTimeline";
 import { PartyInfo } from "@/components/escrow/PartyInfo";
 import { ExecuteTrafficPurchaseModal } from "@/components/escrow/ExecuteTrafficPurchaseModal";
+import { ConfirmationFormModal, type ConfirmationStep } from "@/components/escrow/ConfirmationFormModal";
 import { AttachmentList, type Attachment } from "@/components/attachments/AttachmentList";
 import { AttachmentUpload } from "@/components/attachments/AttachmentUpload";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,8 @@ import {
   useConfirmEscrow,
   useCancelEscrow,
   useIsFeatureEnabled,
+  useTrafficPurchaseStatus,
+  useUploadAttachment,
 } from "@/hooks/use-api";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -71,12 +74,15 @@ export default function EscrowDetail() {
   const [arbiterForceCompleteOpen, setArbiterForceCompleteOpen] = useState(false);
   const [arbiterReason, setArbiterReason] = useState('');
   const [executeTrafficModalOpen, setExecuteTrafficModalOpen] = useState(false);
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+  const [confirmModalStep, setConfirmModalStep] = useState<ConfirmationStep | null>(null);
   const queryClient = useQueryClient();
 
   const acceptEscrow = useAcceptEscrow();
   const fundEscrow = useFundEscrow();
   const confirmEscrow = useConfirmEscrow();
   const cancelEscrow = useCancelEscrow();
+  const uploadAttachment = useUploadAttachment();
 
   // Check if current user is arbiter for this escrow
   const { data: arbiterCheck } = useQuery({
@@ -91,6 +97,9 @@ export default function EscrowDetail() {
 
   // Check if traffic_buyer feature is enabled for user's org
   const { data: trafficBuyerEnabled } = useIsFeatureEnabled(user?.primaryOrgId, 'traffic_buyer');
+
+  // Check traffic purchase status for TRAFFIC_BUY escrows
+  const { data: trafficPurchaseStatus } = useTrafficPurchaseStatus(id, escrow?.serviceTypeId);
 
   // Arbiter cancel mutation
   const arbiterCancelMutation = useMutation({
@@ -156,10 +165,34 @@ export default function EscrowDetail() {
     }
   };
 
-  const handleConfirm = async () => {
+  // Open confirm modal with appropriate step
+  const openConfirmModal = (step: ConfirmationStep) => {
+    setConfirmModalStep(step);
+    setConfirmModalOpen(true);
+  };
+
+  // Handle confirm with modal data (notes, file upload)
+  const handleConfirmWithData = async (data: { notes: string; file?: File; holdUntilCompletion: boolean }) => {
     try {
-      await confirmEscrow.mutateAsync(id);
-      toast({ title: "Confirmed", description: "You have confirmed delivery/receipt." });
+      // Upload attachment first if file provided
+      if (data.file) {
+        await uploadAttachment.mutateAsync({
+          escrowId: id,
+          file: data.file,
+          confirmationStep: confirmModalStep || undefined,
+          holdUntilCompletion: data.holdUntilCompletion,
+          notes: data.notes,
+        });
+      }
+      // Then confirm the escrow
+      await confirmEscrow.mutateAsync({ id, notes: data.notes });
+      toast({
+        title: "Confirmed",
+        description: data.file
+          ? "You have confirmed with your attachment."
+          : "You have confirmed delivery/receipt.",
+      });
+      setConfirmModalOpen(false);
     } catch (error) {
       toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to confirm", variant: "destructive" });
     }
@@ -577,10 +610,10 @@ export default function EscrowDetail() {
                   <div className="flex items-center justify-between bg-white p-4 rounded-lg border border-emerald-100 shadow-sm">
                     <div className="space-y-1">
                       <h4 className="font-medium">Mark as Delivered</h4>
-                      <p className="text-xs text-muted-foreground">Confirm you have delivered the service/item.</p>
+                      <p className="text-xs text-muted-foreground">Confirm you have delivered the service/item. You can add notes and attachments.</p>
                     </div>
-                    <Button onClick={handleConfirm} disabled={confirmEscrow.isPending}>
-                      {confirmEscrow.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    <Button onClick={() => openConfirmModal('PARTY_B_CONFIRM')} disabled={confirmEscrow.isPending || uploadAttachment.isPending}>
+                      {(confirmEscrow.isPending || uploadAttachment.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       Confirm Delivery
                     </Button>
                   </div>
@@ -591,14 +624,25 @@ export default function EscrowDetail() {
                   <div className="flex items-center justify-between bg-white p-4 rounded-lg border border-amber-100 shadow-sm">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <Zap className="h-4 w-4 text-amber-500" />
+                        <Zap className={`h-4 w-4 ${trafficPurchaseStatus?.successful ? 'text-emerald-500' : 'text-amber-500'}`} />
                         <h4 className="font-medium">Execute Traffic Purchase</h4>
                       </div>
-                      <p className="text-xs text-muted-foreground">Purchase Canton traffic for the receiving validator.</p>
+                      <p className="text-xs text-muted-foreground">
+                        {trafficPurchaseStatus?.successful
+                          ? `Executed on ${new Date(trafficPurchaseStatus.executedAt!).toLocaleString()}`
+                          : 'Purchase Canton traffic for the receiving validator.'}
+                      </p>
                     </div>
-                    <Button variant="outline" className="border-amber-200 text-amber-700 hover:bg-amber-50" onClick={() => setExecuteTrafficModalOpen(true)}>
-                      Execute Purchase
-                    </Button>
+                    {trafficPurchaseStatus?.successful ? (
+                      <Button variant="outline" className="border-emerald-200 text-emerald-700" disabled>
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        Executed
+                      </Button>
+                    ) : (
+                      <Button variant="outline" className="border-amber-200 text-amber-700 hover:bg-amber-50" onClick={() => setExecuteTrafficModalOpen(true)}>
+                        Execute Purchase
+                      </Button>
+                    )}
                   </div>
                 )}
 
@@ -607,10 +651,10 @@ export default function EscrowDetail() {
                   <div className="flex items-center justify-between bg-white p-4 rounded-lg border border-emerald-100 shadow-sm">
                     <div className="space-y-1">
                       <h4 className="font-medium">Confirm Receipt</h4>
-                      <p className="text-xs text-muted-foreground">Confirm you received the service/item to release funds.</p>
+                      <p className="text-xs text-muted-foreground">Confirm you received the service/item to release funds. You can add notes and attachments.</p>
                     </div>
-                    <Button onClick={handleConfirm} disabled={confirmEscrow.isPending}>
-                      {confirmEscrow.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    <Button onClick={() => openConfirmModal('PARTY_A_CONFIRM')} disabled={confirmEscrow.isPending || uploadAttachment.isPending}>
+                      {(confirmEscrow.isPending || uploadAttachment.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       Release Funds
                     </Button>
                   </div>
@@ -866,6 +910,20 @@ export default function EscrowDetail() {
           open={executeTrafficModalOpen}
           onOpenChange={setExecuteTrafficModalOpen}
         />
+
+        {/* Confirmation Form Modal */}
+        {confirmModalStep && (
+          <ConfirmationFormModal
+            open={confirmModalOpen}
+            onOpenChange={setConfirmModalOpen}
+            step={confirmModalStep}
+            escrowId={id}
+            amount={escrow.amount}
+            currency={escrow.currency}
+            onSubmit={handleConfirmWithData}
+            isSubmitting={confirmEscrow.isPending || uploadAttachment.isPending}
+          />
+        )}
       </PageContainer>
     </div>
   );

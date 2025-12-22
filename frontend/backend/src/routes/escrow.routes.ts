@@ -458,4 +458,50 @@ router.post('/:id/messages', requireAuth, async (req, res) => {
   }
 });
 
+// ============================================
+// TRAFFIC PURCHASE STATUS
+// ============================================
+
+// Get traffic purchase status for an escrow
+router.get('/:id/traffic-purchase-status', optionalAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Get traffic request for this escrow
+    const trafficRequest = await cantonTrafficService.getTrafficRequestByEscrowId(id);
+
+    if (!trafficRequest) {
+      return res.json({
+        success: true,
+        data: {
+          executed: false,
+          trafficRequest: null,
+        },
+      });
+    }
+
+    // Check if executed (has executedAt timestamp and successful response)
+    const executed = !!trafficRequest.executedAt;
+    const successful = executed && trafficRequest.cantonResponse &&
+      !trafficRequest.cantonResponse.error;
+
+    res.json({
+      success: true,
+      data: {
+        executed,
+        successful,
+        executedAt: trafficRequest.executedAt,
+        trackingId: trafficRequest.trackingId,
+        cantonResponse: trafficRequest.cantonResponse,
+      },
+    });
+  } catch (error) {
+    const response: ApiResponse<null> = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+    res.status(500).json(response);
+  }
+});
+
 export default router;
