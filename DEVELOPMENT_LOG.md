@@ -63,6 +63,77 @@ curl --socks5-hostname 127.0.0.1:8080 -X POST '{walletUrl}/api/validator/v0/wall
 
 ---
 
+### Execute Traffic Purchase Button - Dashboard Integration
+
+Added the Execute Traffic Purchase button to Dashboard active deals, making it available in all 3 locations:
+1. **Dashboard** - Active Deals section
+2. **Deals Tab** - Deal cards in the list
+3. **Deal Detail Page** - Actions card in sidebar
+
+**Conditions to Show Button:**
+- Escrow status is `FUNDED`
+- Current user is Party B (counterparty)
+- Service type is `TRAFFIC_BUY`
+- Organization has `traffic_buyer` feature enabled
+
+**Files Modified:**
+- `client/src/pages/dashboard.tsx` - Added ExecuteTrafficPurchaseModal import, state management, feature flag check, and button rendering
+
+---
+
+### Download Evidence Feature
+
+Added ability to download traffic purchase evidence as a text file for record-keeping and audit purposes.
+
+**The Feature:**
+- Button appears in success section after successful traffic purchase
+- Downloads a `.txt` file containing:
+  - Date/time of execution
+  - Escrow ID
+  - Tracking ID (from Canton API)
+  - Full response (including `request_contract_id`)
+  - Traffic amount, receiving validator, domain ID, wallet URL
+
+**Generated File Format:**
+```
+Canton Network Traffic Purchase Evidence
+========================================
+Date: 12/22/2025, 3:45:00 PM
+Escrow ID: abc-123-def
+
+Tracking ID:
+traffic-550e8400-e29b-41d4-a716-446655440000
+
+Response Details:
+{
+  "request_contract_id": "..."
+}
+
+Purchase Details:
+- Traffic Amount: 5 bytes (5 bytes)
+- Receiving Validator: PAR::validator::...
+- Domain ID: global-domain::...
+- Wallet URL: https://wallet-orph.validator...
+```
+
+**Files Modified:**
+- `client/src/components/escrow/ExecuteTrafficPurchaseModal.tsx` - Added `downloadEvidence()` function and download button
+
+---
+
+### Bug Fix: Text Wrapping in Success Modal
+
+Fixed an issue where tracking ID and response details extended beyond the success modal box.
+
+**Problem:** Long tracking IDs and JSON response data were not wrapping, causing horizontal overflow.
+
+**Fix:** Added CSS classes to ensure proper wrapping:
+- `overflow-hidden` on container
+- `min-w-0` on flex containers
+- `break-all` and `whitespace-pre-wrap` on pre elements
+
+---
+
 ### Bug Fix: Admin Page Role and Access Control
 
 Fixed multiple issues with the admin page showing incorrect role and allowing access to platform-only features for non-platform admins.
@@ -1013,6 +1084,9 @@ SSH_PRIVATE_KEY="-----BEGIN OPENSSH PRIVATE KEY-----\n..."
 - **Optional IAP Cookie** - Support for MPCH validators requiring GCP IAP authentication
 - **Curl Command Preview** - User can review exact API call before execution
 - **Bug Fix: Admin Page Role** - Fixed role display and sidebar filtering for org admins
+- **Execute Button on Dashboard** - Added Execute Traffic Purchase button to Dashboard active deals (now available in all 3 locations: Dashboard, Deals tab, Deal detail page)
+- **Text Wrapping Fix** - Fixed tracking ID and response details overflowing the success modal box
+- **Download Evidence Button** - Added button to download tracking ID and response as text file for evidence attachment
 
 ### December 21, 2025
 - **Confirmation Forms with Attachments** - Modal forms for Fund/Confirm with notes, file upload, and escrow-until-completion option
