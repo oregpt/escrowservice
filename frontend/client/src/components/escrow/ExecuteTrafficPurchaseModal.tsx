@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, AlertCircle, CheckCircle, Zap, Copy, ExternalLink, Code, ArrowRight, Download } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle, Zap, Copy, ExternalLink, Code, ArrowRight, Download, ChevronDown, ChevronRight } from 'lucide-react';
 import { useExecuteTrafficPurchase, useTrafficConfig } from '@/hooks/use-api';
 import { useToast } from '@/hooks/use-toast';
 import type { EscrowWithParties, TrafficPurchaseResponse } from '@/lib/api';
@@ -24,6 +24,7 @@ export function ExecuteTrafficPurchaseModal({ escrow, open, onOpenChange }: Exec
   const [iapCookie, setIapCookie] = useState('');
   const [result, setResult] = useState<TrafficPurchaseResponse | null>(null);
   const [confirmationStep, setConfirmationStep] = useState<ConfirmationStep>(0);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const { data: trafficConfig, isLoading: configLoading } = useTrafficConfig();
   const executeTrafficPurchase = useExecuteTrafficPurchase();
@@ -144,6 +145,7 @@ export function ExecuteTrafficPurchaseModal({ escrow, open, onOpenChange }: Exec
     setIapCookie('');
     setResult(null);
     setConfirmationStep(0);
+    setShowAdvanced(false);
     onOpenChange(false);
   };
 
@@ -368,23 +370,43 @@ Purchase Details:
               </div>
             )}
 
-            {/* IAP Cookie Input (Optional) */}
+            {/* Advanced Options (Collapsible) */}
             {hasConfig && (
-              <div className="space-y-2">
-                <Label htmlFor="iap-cookie">
-                  IAP Cookie <span className="text-muted-foreground font-normal">(optional - this is a short term solution)</span>
-                </Label>
-                <Input
-                  id="iap-cookie"
-                  type="password"
-                  placeholder="Enter GCP IAP cookie if required (e.g., __Host-GCP_IAP_AUTH_TOKEN_...)"
-                  value={iapCookie}
-                  onChange={(e) => setIapCookie(e.target.value)}
-                  disabled={executeTrafficPurchase.isPending}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Required for MPCH validators. Your IAP cookie is never stored - used only for this request.
-                </p>
+              <div className="border rounded-lg">
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-slate-50 transition-colors rounded-lg"
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                >
+                  <span>Advanced Options</span>
+                  {showAdvanced ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                </button>
+
+                {showAdvanced && (
+                  <div className="px-4 pb-4 space-y-2 border-t">
+                    <div className="pt-3">
+                      <Label htmlFor="iap-cookie">
+                        IAP Cookie <Badge variant="outline" className="ml-2 text-xs">MPCH only</Badge>
+                      </Label>
+                      <Input
+                        id="iap-cookie"
+                        type="password"
+                        placeholder="Enter GCP IAP cookie (e.g., __Host-GCP_IAP_AUTH_TOKEN_...)"
+                        value={iapCookie}
+                        onChange={(e) => setIapCookie(e.target.value)}
+                        disabled={executeTrafficPurchase.isPending}
+                        className="mt-2"
+                      />
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Required for MPCH validators. Your IAP cookie is never stored - used only for this request.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
