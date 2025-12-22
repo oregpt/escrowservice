@@ -11,6 +11,7 @@ import paymentRoutes from './payment.routes.js';
 import webhookRoutes from './webhook.routes.js';
 import templateRoutes from './template.routes.js';
 import ccPriceRoutes from './cc-price.routes.js';
+import trafficConfigRoutes from './traffic-config.routes.js';
 
 const router = Router();
 
@@ -27,6 +28,7 @@ router.use('/platform-settings', platformSettingsRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/templates', templateRoutes);
 router.use('/cc-price', ccPriceRoutes);
+router.use('/traffic-config', trafficConfigRoutes);
 
 // Webhooks are mounted separately to handle raw body
 

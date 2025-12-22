@@ -466,3 +466,58 @@ export interface PlatformStats {
     available: number;
   };
 }
+
+// ============================================
+// CANTON TRAFFIC PURCHASE TOOL TYPES
+// ============================================
+
+// Feature Flags (per-org)
+export type FeatureKey = 'tools_section' | 'traffic_buyer';
+
+export interface OrgFeatureFlag {
+  id: string;
+  organizationId: string;
+  featureKey: FeatureKey;
+  enabled: boolean;
+  updatedByUserId?: string;
+  updatedAt: Date;
+}
+
+// User Traffic Config (wallet settings for Canton traffic purchases)
+// NOTE: Bearer token is NEVER stored - entered at execution time only
+export interface UserTrafficConfig {
+  id: string;
+  userId: string;
+  walletValidatorUrl: string;
+  domainId: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Traffic Purchase Execution Types
+export interface TrafficPurchaseParams {
+  escrowId: string;
+  walletValidatorUrl: string;
+  domainId: string;
+  receivingValidatorPartyId: string;
+  trafficAmountBytes: number;
+  bearerToken: string;  // Passed at execution time, NEVER stored
+}
+
+export interface TrafficPurchaseResponse {
+  success: boolean;
+  trackingId?: string;
+  response?: Record<string, any>;  // Full API response (contains evidence IDs)
+  error?: string;
+}
+
+// Request types for traffic config
+export interface UpsertTrafficConfigRequest {
+  walletValidatorUrl: string;
+  domainId: string;
+}
+
+// Request type for executing traffic purchase
+export interface ExecuteTrafficPurchaseRequest {
+  bearerToken: string;  // Passed at execution time, NEVER stored
+}

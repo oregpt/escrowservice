@@ -2,8 +2,11 @@ import { Router } from 'express';
 import { escrowService } from '../services/escrow.service.js';
 import { attachmentService } from '../services/attachment.service.js';
 import { cantonTrafficService } from '../services/canton-traffic.service.js';
+import { userTrafficConfigService } from '../services/user-traffic-config.service.js';
+import { orgFeatureFlagsService } from '../services/org-feature-flags.service.js';
+import { userService } from '../services/user.service.js';
 import { requireAuth, optionalAuth } from '../middleware/auth.middleware.js';
-import type { ApiResponse, Escrow, EscrowWithParties, EscrowEvent, EscrowMessage, CreateEscrowRequest } from '../types/index.js';
+import type { ApiResponse, Escrow, EscrowWithParties, EscrowEvent, EscrowMessage, CreateEscrowRequest, ExecuteTrafficPurchaseRequest, TrafficPurchaseResponse } from '../types/index.js';
 
 const router = Router();
 
@@ -248,6 +251,115 @@ router.post('/:id/cancel', requireAuth, async (req, res) => {
       error: error instanceof Error ? error.message : 'Unknown error',
     };
     res.status(400).json(response);
+  }
+});
+
+// ============================================
+// CANTON TRAFFIC PURCHASE EXECUTION
+// ============================================
+
+// Execute traffic purchase (Party B only, TRAFFIC_BUY escrows only)
+// Bearer token is passed at execution time and NEVER stored
+router.post('/:id/execute-traffic-purchase', requireAuth, async (req, res) => {
+  try {
+    const userId = req.userId!;
+    const { id } = req.params;
+    const { bearerToken }: ExecuteTrafficPurchaseRequest = req.body;
+
+    // Validate bearer token provided
+    if (!bearerToken || typeof bearerToken !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Bearer token is required',
+      });
+    }
+
+    // Get escrow
+    const escrow = await escrowService.getEscrowById(id);
+    if (!escrow) {
+      return res.status(404).json({
+        success: false,
+        error: 'Escrow not found',
+      });
+    }
+
+    // Check it's a TRAFFIC_BUY escrow
+    if (escrow.serviceTypeId !== 'TRAFFIC_BUY') {
+      return res.status(400).json({
+        success: false,
+        error: 'This action is only available for TRAFFIC_BUY escrows',
+      });
+    }
+
+    // Check user is Party B
+    if (escrow.partyBUserId !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Only Party B (counterparty) can execute traffic purchases',
+      });
+    }
+
+    // Check escrow is in FUNDED status
+    if (escrow.status !== 'FUNDED') {
+      return res.status(400).json({
+        success: false,
+        error: 'Escrow must be in FUNDED status to execute traffic purchase',
+      });
+    }
+
+    // Check user has traffic_buyer feature enabled for their org
+    const user = await userService.getUserById(userId);
+    if (user?.primaryOrgId) {
+      const enabled = await orgFeatureFlagsService.isFeatureEnabled(user.primaryOrgId, 'traffic_buyer');
+      if (!enabled) {
+        return res.status(403).json({
+          success: false,
+          error: 'Traffic buyer feature is not enabled for your organization',
+        });
+      }
+    }
+
+    // Get user's traffic config
+    const trafficConfig = await userTrafficConfigService.getConfig(userId);
+    if (!trafficConfig) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please configure your traffic settings first (wallet URL and domain ID)',
+      });
+    }
+
+    // Get receiving validator party ID from escrow metadata
+    const receivingValidatorPartyId = escrow.metadata?.validatorPartyId;
+    const trafficAmountBytes = escrow.metadata?.trafficAmountBytes;
+
+    if (!receivingValidatorPartyId || !trafficAmountBytes) {
+      return res.status(400).json({
+        success: false,
+        error: 'Escrow metadata is missing validatorPartyId or trafficAmountBytes',
+      });
+    }
+
+    // Execute the traffic purchase
+    const result = await cantonTrafficService.executeTrafficPurchaseWithCredentials({
+      escrowId: id,
+      walletValidatorUrl: trafficConfig.walletValidatorUrl,
+      domainId: trafficConfig.domainId,
+      receivingValidatorPartyId,
+      trafficAmountBytes,
+      bearerToken, // Never logged or stored
+    });
+
+    const response: ApiResponse<TrafficPurchaseResponse> = {
+      success: true,
+      data: result,
+    };
+    res.json(response);
+  } catch (error) {
+    const response: ApiResponse<null> = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+    res.status(500).json(response);
   }
 });
 

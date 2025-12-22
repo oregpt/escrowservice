@@ -1,7 +1,7 @@
 import { pool, withTransaction } from '../db/connection.js';
 import { v4 as uuidv4 } from 'uuid';
-import type { CantonTrafficRequest, TrafficBuyMetadata } from '../types/index.js';
-import { proxiedPost, isTunnelConnected } from './proxied-http.js';
+import type { CantonTrafficRequest, TrafficBuyMetadata, TrafficPurchaseParams, TrafficPurchaseResponse } from '../types/index.js';
+import { proxiedPost, isTunnelConnected, getTunnelStatus } from './proxied-http.js';
 
 const CANTON_WALLET_API_URL = process.env.CANTON_WALLET_API_URL || 'https://wallet.sv-2.us.cantoncloud.dev.global.canton.network.sync.global';
 
@@ -115,6 +115,140 @@ export class CantonTrafficService {
         throw error;
       }
     });
+  }
+
+  /**
+   * Execute traffic purchase with user-provided credentials
+   * Bearer token is passed at execution time and NEVER stored
+   * All calls go through SSH/SOCKS5 tunnel for IP whitelisting
+   */
+  async executeTrafficPurchaseWithCredentials(
+    params: TrafficPurchaseParams
+  ): Promise<TrafficPurchaseResponse> {
+    const {
+      escrowId,
+      walletValidatorUrl,
+      domainId,
+      receivingValidatorPartyId,
+      trafficAmountBytes,
+      bearerToken, // Passed at execution time, never stored
+    } = params;
+
+    // Generate tracking ID
+    const trackingId = `traffic-${uuidv4()}`;
+
+    // Check tunnel status
+    const tunnelStatus = getTunnelStatus();
+    console.log(`[Canton Traffic] Executing with user credentials, tunnel: ${JSON.stringify(tunnelStatus)}`);
+
+    // Build API URL - endpoint TBD by user (placeholder for now)
+    // TODO: User will provide exact endpoint format
+    const apiUrl = `${walletValidatorUrl}/api/validator/v0/wallet/buy-traffic-requests`;
+
+    // Prepare request payload (never includes bearer token in logs)
+    const requestPayload = {
+      receiving_validator_party_id: receivingValidatorPartyId,
+      domain_id: domainId,
+      traffic_amount: trafficAmountBytes,
+      tracking_id: trackingId,
+    };
+
+    try {
+      // Make proxied API call
+      const response = await proxiedPost(
+        apiUrl,
+        requestPayload,
+        {
+          'Authorization': `Bearer ${bearerToken}`, // Never logged
+        },
+        { requireProxy: true } // Always require tunnel
+      );
+
+      console.log(`[Canton Traffic] Response status: ${response.status}, proxied: ${response.proxied}`);
+
+      // Log the request/response to canton_traffic_requests table
+      // Note: We log requestPayload (no bearer token) and full response
+      await pool.query(
+        `INSERT INTO canton_traffic_requests (
+          escrow_id, receiving_validator_party_id, domain_id,
+          traffic_amount_bytes, tracking_id, canton_response, executed_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        ON CONFLICT (tracking_id) DO UPDATE SET
+          canton_response = $6, executed_at = NOW()`,
+        [
+          escrowId,
+          receivingValidatorPartyId,
+          domainId,
+          trafficAmountBytes,
+          trackingId,
+          JSON.stringify({
+            status: response.status,
+            data: response.data,
+            proxied: response.proxied,
+            requestPayload, // Log what was sent (no bearer token)
+          }),
+        ]
+      );
+
+      // Check for error response
+      if (response.status >= 400) {
+        return {
+          success: false,
+          trackingId,
+          response: response.data,
+          error: `Canton API returned status ${response.status}`,
+        };
+      }
+
+      return {
+        success: true,
+        trackingId,
+        response: response.data, // Full response with evidence IDs
+      };
+    } catch (error) {
+      let errorMessage = 'Unknown error';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        // Check if this is a proxied HTTP error with more details
+        const proxiedError = error as any;
+        if (proxiedError.originalError) {
+          errorMessage = `${error.message}. Original: ${proxiedError.originalError.message}`;
+        }
+        if (proxiedError.url) {
+          errorMessage = `${errorMessage}. URL: ${proxiedError.url}`;
+        }
+      }
+      console.error(`[Canton Traffic] Execution failed:`, errorMessage);
+
+      // Log error to database
+      await pool.query(
+        `INSERT INTO canton_traffic_requests (
+          escrow_id, receiving_validator_party_id, domain_id,
+          traffic_amount_bytes, tracking_id, canton_response
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (tracking_id) DO UPDATE SET
+          canton_response = $6`,
+        [
+          escrowId,
+          receivingValidatorPartyId,
+          domainId,
+          trafficAmountBytes,
+          trackingId,
+          JSON.stringify({
+            error: errorMessage,
+            requestPayload, // Log what was sent (no bearer token)
+          }),
+        ]
+      );
+
+      return {
+        success: false,
+        trackingId,
+        error: errorMessage,
+      };
+    }
   }
 
   // Get traffic request by ID

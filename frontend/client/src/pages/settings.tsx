@@ -7,8 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Trash2, Plus, AlertTriangle, Loader2, Save } from "lucide-react";
-import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Trash2, Plus, AlertTriangle, Loader2, Save, Wrench, Zap, CheckCircle, Globe } from "lucide-react";
+import { useState, useEffect } from "react";
 import {
   useAuth,
   useAutoAcceptRules,
@@ -18,6 +19,10 @@ import {
   useToggleAutoAccept,
   useUpdateProfile,
   useLogin,
+  useIsFeatureEnabled,
+  useTrafficConfig,
+  useUpsertTrafficConfig,
+  useDeleteTrafficConfig,
 } from "@/hooks/use-api";
 import { useToast } from "@/hooks/use-toast";
 
@@ -35,9 +40,30 @@ export default function SettingsPage() {
 
   const user = authData?.user;
 
+  // Feature flags
+  const { data: toolsSectionEnabled } = useIsFeatureEnabled(user?.primaryOrgId, 'tools_section');
+  const { data: trafficBuyerEnabled } = useIsFeatureEnabled(user?.primaryOrgId, 'traffic_buyer');
+
+  // Traffic config
+  const { data: trafficConfig, isLoading: trafficConfigLoading } = useTrafficConfig();
+  const upsertTrafficConfig = useUpsertTrafficConfig();
+  const deleteTrafficConfig = useDeleteTrafficConfig();
+
   // Profile form state
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [email, setEmail] = useState(user?.email || '');
+
+  // Traffic config form state
+  const [walletValidatorUrl, setWalletValidatorUrl] = useState('');
+  const [domainId, setDomainId] = useState('');
+
+  // Sync traffic config when loaded
+  useEffect(() => {
+    if (trafficConfig) {
+      setWalletValidatorUrl(trafficConfig.walletValidatorUrl || '');
+      setDomainId(trafficConfig.domainId || '');
+    }
+  }, [trafficConfig]);
 
   // New rule form state
   const [showNewRuleForm, setShowNewRuleForm] = useState(false);
@@ -119,6 +145,60 @@ export default function SettingsPage() {
     return serviceTypes?.find(st => st.id === id)?.name || id;
   };
 
+  const handleSaveTrafficConfig = async () => {
+    if (!walletValidatorUrl.trim() || !domainId.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Both Wallet Validator URL and Domain ID are required",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      new URL(walletValidatorUrl);
+    } catch {
+      toast({
+        title: "Invalid URL",
+        description: "Please enter a valid Wallet Validator URL",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      await upsertTrafficConfig.mutateAsync({
+        walletValidatorUrl: walletValidatorUrl.trim(),
+        domainId: domainId.trim(),
+      });
+      toast({ title: "Traffic Configuration Saved", description: "Your traffic settings have been updated." });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save traffic configuration",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleDeleteTrafficConfig = async () => {
+    try {
+      await deleteTrafficConfig.mutateAsync();
+      setWalletValidatorUrl('');
+      setDomainId('');
+      toast({ title: "Configuration Deleted", description: "Your traffic configuration has been removed." });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete configuration",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const showToolsSection = toolsSectionEnabled;
+  const showTrafficBuyer = trafficBuyerEnabled;
+
   return (
     <div className="min-h-screen bg-slate-50/50">
       <Header />
@@ -130,6 +210,12 @@ export default function SettingsPage() {
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="notifications">Notifications</TabsTrigger>
             <TabsTrigger value="auto-accept">Auto-Accept Rules</TabsTrigger>
+            {showToolsSection && (
+              <TabsTrigger value="tools" className="flex items-center gap-1">
+                <Wrench className="h-3 w-3" />
+                Tools
+              </TabsTrigger>
+            )}
             <TabsTrigger value="security">Security</TabsTrigger>
           </TabsList>
 
@@ -357,6 +443,133 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* Tools Section - Only visible if feature is enabled */}
+          {showToolsSection && (
+            <TabsContent value="tools">
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-lg font-medium flex items-center gap-2">
+                    <Wrench className="h-5 w-5" />
+                    Tools
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Specialized tools for your organization.
+                  </p>
+                </div>
+
+                {/* Traffic Buyer Tool */}
+                {showTrafficBuyer && (
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="flex items-center gap-2">
+                            <Zap className="h-5 w-5 text-amber-500" />
+                            Canton Traffic Buyer
+                          </CardTitle>
+                          <CardDescription>
+                            Configure your wallet settings for purchasing Canton Network traffic.
+                          </CardDescription>
+                        </div>
+                        {trafficConfig && (
+                          <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Configured
+                          </Badge>
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {trafficConfigLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        </div>
+                      ) : (
+                        <>
+                          <div className="space-y-2">
+                            <Label htmlFor="wallet-url" className="flex items-center gap-2">
+                              <Globe className="h-4 w-4 text-muted-foreground" />
+                              Wallet Validator URL
+                            </Label>
+                            <Input
+                              id="wallet-url"
+                              type="url"
+                              placeholder="https://validator.example.com"
+                              value={walletValidatorUrl}
+                              onChange={(e) => setWalletValidatorUrl(e.target.value)}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              The URL of your Canton wallet validator endpoint.
+                            </p>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="domain-id">Domain ID</Label>
+                            <Input
+                              id="domain-id"
+                              placeholder="domain::abcd1234..."
+                              value={domainId}
+                              onChange={(e) => setDomainId(e.target.value)}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              The Canton domain ID for traffic purchases.
+                            </p>
+                          </div>
+
+                          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+                            <div className="flex items-start gap-2">
+                              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                              <div>
+                                <p className="font-medium">Bearer Token Security</p>
+                                <p className="text-xs mt-1">
+                                  Your bearer token is never stored. You will enter it each time you execute a traffic purchase for maximum security.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex gap-3 pt-2">
+                            <Button
+                              onClick={handleSaveTrafficConfig}
+                              disabled={upsertTrafficConfig.isPending}
+                            >
+                              {upsertTrafficConfig.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                              <Save className="mr-2 h-4 w-4" />
+                              Save Configuration
+                            </Button>
+                            {trafficConfig && (
+                              <Button
+                                variant="outline"
+                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={handleDeleteTrafficConfig}
+                                disabled={deleteTrafficConfig.isPending}
+                              >
+                                {deleteTrafficConfig.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </Button>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* No tools available message */}
+                {!showTrafficBuyer && (
+                  <Card>
+                    <CardContent className="pt-6 text-center text-muted-foreground">
+                      <Wrench className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>No tools are currently available for your organization.</p>
+                      <p className="text-sm mt-1">Contact your administrator to enable additional features.</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            </TabsContent>
+          )}
 
           <TabsContent value="security">
             <Card>

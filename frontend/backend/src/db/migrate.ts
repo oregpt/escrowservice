@@ -337,6 +337,31 @@ CREATE TABLE IF NOT EXISTS org_service_type_settings (
 -- Indexes for org service type settings
 CREATE INDEX IF NOT EXISTS idx_org_service_type_settings_org ON org_service_type_settings(organization_id);
 CREATE INDEX IF NOT EXISTS idx_org_service_type_settings_type ON org_service_type_settings(service_type_id);
+
+-- Org Feature Flags (per-org feature toggles)
+CREATE TABLE IF NOT EXISTS org_feature_flags (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    feature_key VARCHAR(100) NOT NULL,
+    enabled BOOLEAN DEFAULT false,
+    updated_by_user_id UUID REFERENCES users(id),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(organization_id, feature_key)
+);
+CREATE INDEX IF NOT EXISTS idx_org_feature_flags_org ON org_feature_flags(organization_id);
+
+-- User Traffic Config (per-user wallet settings for Canton traffic purchases)
+-- NOTE: Bearer token is NEVER stored - entered at execution time only
+CREATE TABLE IF NOT EXISTS user_traffic_config (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    wallet_validator_url VARCHAR(500) NOT NULL,
+    domain_id VARCHAR(200) NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_traffic_config_user ON user_traffic_config(user_id);
 `;
 
 // Migration for existing databases - add new columns if they don't exist

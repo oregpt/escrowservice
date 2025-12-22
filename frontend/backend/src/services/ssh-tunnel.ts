@@ -28,6 +28,7 @@ let tunnelProcess: ChildProcess | null = null;
 let isConnected = false;
 let reconnectAttempts = 0;
 let keyFilePath: string | null = null;
+let externalProxyMode = false; // True when user runs SSH manually
 
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAY_MS = 5000;
@@ -180,6 +181,30 @@ export function isTunnelEnabled(): boolean {
 }
 
 /**
+ * Check if SOCKS proxy port is listening (for external proxy mode)
+ */
+async function isProxyPortListening(): Promise<boolean> {
+  const port = getSocksPort();
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    socket.setTimeout(2000);
+    socket.on('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.on('error', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.connect(port, '127.0.0.1');
+  });
+}
+
+/**
  * Start the SSH SOCKS5 tunnel
  */
 export async function startTunnel(): Promise<boolean> {
@@ -194,12 +219,35 @@ export async function startTunnel(): Promise<boolean> {
   const sshUser = process.env.SSH_USER;
   const sshPrivateKey = process.env.SSH_PRIVATE_KEY;
 
-  // Check if credentials are configured
+  // Check if we should use external proxy mode (no private key but host is set)
+  if (sshHost && (!sshPrivateKey || sshPrivateKey.trim() === '')) {
+    console.log('[SSH Tunnel] No SSH_PRIVATE_KEY - using EXTERNAL PROXY mode');
+    console.log(`[SSH Tunnel] Expecting proxy on port ${getSocksPort()}`);
+    console.log(`[SSH Tunnel] Run manually: ssh -D ${getSocksPort()} ${sshUser || 'root'}@${sshHost}`);
+
+    externalProxyMode = true;
+
+    // Check if proxy is already listening
+    const listening = await isProxyPortListening();
+    if (listening) {
+      console.log('[SSH Tunnel] External proxy detected on port ' + getSocksPort());
+      isConnected = true;
+      return true;
+    } else {
+      console.log('[SSH Tunnel] External proxy NOT detected - start your SSH tunnel manually');
+      isConnected = false;
+      return false;
+    }
+  }
+
+  // Check if credentials are configured for managed mode
   if (!sshHost || !sshUser || !sshPrivateKey) {
     console.log('[SSH Tunnel] SSH credentials not configured, tunnel disabled');
     console.log('[SSH Tunnel] Set SSH_HOST, SSH_USER, and SSH_PRIVATE_KEY to enable');
     return false;
   }
+
+  externalProxyMode = false;
 
   const socksPort = getSocksPort();
   const sshPort = getSshPort();

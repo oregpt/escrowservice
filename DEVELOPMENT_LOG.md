@@ -5,7 +5,161 @@ EscrowService is a full-stack escrow platform built with React (Vite) frontend a
 
 ---
 
-## Latest Session: December 21, 2025 (Continued)
+## Latest Session: December 22, 2025
+
+### Bug Fix: Admin Page Role and Access Control
+
+Fixed multiple issues with the admin page showing incorrect role and allowing access to platform-only features for non-platform admins.
+
+**Issues Fixed:**
+
+1. **Feature Flags Toggle Error**: Platform admins couldn't update feature flags for orgs they weren't members of
+   - Root cause: Backend only checked org membership, not platform admin role
+   - Fix: Added platform admin check in `organization.routes.ts`
+   ```typescript
+   const isPlatformAdmin = req.user?.role === 'platform_admin';
+   const isOrgAdmin = membership?.role === 'admin';
+   if (!isPlatformAdmin && !isOrgAdmin) { /* deny */ }
+   ```
+
+2. **Role Display**: Admin page showed "Platform Admin" to all users
+   - Fix: `AdminLayout.tsx` now checks actual `user.role` and displays:
+     - "Platform Admin" for `platform_admin`
+     - "Organization Admin" for org admins
+
+3. **Sidebar Filtering**: Non-platform admins could see platform-only menu items
+   - Fix: `AdminLayout.tsx` filters sidebar based on role:
+     - Platform admins: Dashboard, Service Types, Organizations, Platform Settings
+     - Org admins: Organizations only
+
+4. **Organizations Tab Data**: Org admins calling platform-only API
+   - Fix: `organizations.tsx` now uses:
+     - `useAdminOrganizations()` for platform admins (sees all orgs)
+     - `useOrganizations()` for org admins (sees only their orgs)
+   - Platform-only actions (Add/Delete org) hidden for org admins
+
+**Files Modified:**
+- `backend/src/routes/organization.routes.ts` - Feature flags authorization
+- `client/src/components/admin/AdminLayout.tsx` - Role display & sidebar filtering
+- `client/src/pages/admin/organizations.tsx` - Role-based data & actions
+
+---
+
+### Canton Traffic Purchase Tool
+
+Implemented a complete Canton Network traffic purchase tool with per-organization feature flags.
+
+**Features:**
+- **Per-Org Feature Flags**: Toggle `tools_section` and `traffic_buyer` per organization
+- **User Traffic Config**: Store wallet validator URL and domain ID (bearer token NEVER stored)
+- **Execute Traffic Purchase**: Modal on escrow detail page for Party B to execute purchases
+- **SSH Tunnel Integration**: All Canton API calls go through SOCKS5 proxy for IP whitelisting
+
+**Database Tables Added:**
+```sql
+-- Per-org feature toggles
+CREATE TABLE org_feature_flags (
+  id UUID PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id),
+  feature_key VARCHAR(100) NOT NULL,  -- 'tools_section', 'traffic_buyer'
+  enabled BOOLEAN DEFAULT false,
+  updated_by_user_id UUID REFERENCES users(id),
+  updated_at TIMESTAMP,
+  UNIQUE(organization_id, feature_key)
+);
+
+-- User wallet config (bearer token NEVER stored)
+CREATE TABLE user_traffic_config (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id),
+  wallet_validator_url VARCHAR(500) NOT NULL,
+  domain_id VARCHAR(200) NOT NULL,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP,
+  UNIQUE(user_id)
+);
+```
+
+**Files Created:**
+| File | Purpose |
+|------|---------|
+| `backend/src/services/org-feature-flags.service.ts` | Per-org feature flag management |
+| `backend/src/services/user-traffic-config.service.ts` | User wallet configuration |
+| `backend/src/routes/traffic-config.routes.ts` | Traffic config CRUD endpoints |
+| `client/src/components/escrow/ExecuteTrafficPurchaseModal.tsx` | Execute purchase modal |
+| `client/src/components/org/OrgFeatureFlagsEditor.tsx` | Feature flags toggle UI |
+
+**Files Modified:**
+- `backend/src/db/migrate.ts` - Added new tables
+- `backend/src/types/index.ts` - Added new types
+- `backend/src/services/canton-traffic.service.ts` - Added `executeTrafficPurchaseWithCredentials()`
+- `backend/src/routes/organization.routes.ts` - Added feature flags endpoints
+- `backend/src/routes/escrow.routes.ts` - Added execute traffic purchase endpoint
+- `backend/src/routes/index.ts` - Registered traffic config routes
+- `client/src/lib/api.ts` - Added feature flags, traffic config, execute APIs
+- `client/src/hooks/use-api.ts` - Added hooks for all new APIs
+- `client/src/pages/escrow-detail.tsx` - Added execute button for TRAFFIC_BUY escrows
+- `client/src/pages/settings.tsx` - Added Tools tab with Traffic Config form
+- `client/src/pages/admin/organizations.tsx` - Added Feature Flags option in dropdown
+
+**API Endpoints:**
+```
+GET  /api/organizations/feature-keys              → List available feature keys
+GET  /api/organizations/:orgId/feature-flags      → Get org's flags
+PUT  /api/organizations/:orgId/feature-flags/:key → Toggle flag
+
+GET  /api/traffic-config                          → Get user's config
+PUT  /api/traffic-config                          → Upsert config
+DELETE /api/traffic-config                        → Delete config
+
+POST /api/escrows/:id/execute-traffic-purchase    → Execute purchase (Party B only)
+```
+
+**Security:**
+- Bearer token is NEVER stored - entered at execution time only
+- All Canton API calls require SSH tunnel (`requireProxy: true`)
+- Only Party B can execute on FUNDED TRAFFIC_BUY escrows
+- Feature must be enabled for user's organization
+
+---
+
+### Bug Fix: CORS Mismatch on Local Development
+
+**Problem:** Browser showing "Failed to fetch" with no response when making API calls.
+
+**Root Cause:**
+- `FRONTEND_URL=http://localhost:5000` in `backend/.env`
+- But Vite started on port **5001** (because 5000 was already in use)
+- Server sent `Access-Control-Allow-Origin: http://localhost:5000`
+- Browser blocked response since origin `localhost:5001` didn't match
+
+**Fix:** Updated `backend/.env`:
+```
+FRONTEND_URL=http://localhost:5001
+```
+
+**Lesson Learned:** When Vite picks a different port, update `FRONTEND_URL` in backend `.env` to match.
+
+---
+
+### Bug Fix: Vite Path Alias Resolution
+
+**Problem:** Vite failing to resolve `@/` path aliases with error:
+```
+Failed to resolve import "@/components/ui/toaster" from "src/App.tsx"
+```
+
+**Root Cause:** `vite.config.ts` used `import.meta.dirname` which isn't available in all Node versions.
+
+**Fix:** Updated `vite.config.ts` to use `fileURLToPath`:
+```typescript
+import { fileURLToPath } from "url";
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+```
+
+---
+
+## Session: December 21, 2025 (Continued)
 
 ### Account Restructure: Per-User-Per-Org Wallets
 

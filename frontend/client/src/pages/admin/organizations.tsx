@@ -5,13 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MoreHorizontal, Plus, UserPlus, Trash2, Loader2, Users, X, Shield, User } from "lucide-react";
-import { useAdminOrganizations } from "@/hooks/use-api";
+import { MoreHorizontal, Plus, UserPlus, Trash2, Loader2, Users, X, Shield, User, Settings2 } from "lucide-react";
+import { OrgFeatureFlagsEditor } from "@/components/org/OrgFeatureFlagsEditor";
+import { useAdminOrganizations, useOrganizations, useAuth } from "@/hooks/use-api";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { getSessionId } from "@/lib/api";
@@ -32,10 +33,21 @@ interface OrgMember {
 
 export default function AdminOrganizationsPage() {
   const { toast } = useToast();
-  const { data: orgs, isLoading, refetch } = useAdminOrganizations();
+  const { data: authData } = useAuth();
+  const isPlatformAdmin = authData?.user?.role === 'platform_admin';
+
+  // Platform admins see all organizations, org admins see only their orgs
+  const { data: adminOrgs, isLoading: isLoadingAdmin, refetch: refetchAdmin } = useAdminOrganizations();
+  const { data: userOrgs, isLoading: isLoadingUser, refetch: refetchUser } = useOrganizations();
+
+  // Use the appropriate data based on role
+  const orgs = isPlatformAdmin ? adminOrgs : userOrgs;
+  const isLoading = isPlatformAdmin ? isLoadingAdmin : isLoadingUser;
+  const refetch = isPlatformAdmin ? refetchAdmin : refetchUser;
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showMembersDialog, setShowMembersDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showFeatureFlagsDialog, setShowFeatureFlagsDialog] = useState(false);
   const [selectedOrg, setSelectedOrg] = useState<any>(null);
   const [newOrgName, setNewOrgName] = useState("");
   const [newOrgSlug, setNewOrgSlug] = useState("");
@@ -247,17 +259,24 @@ export default function AdminOrganizationsPage() {
     setShowMembersDialog(true);
   };
 
+  const handleFeatureFlags = (org: any) => {
+    setSelectedOrg(org);
+    setShowFeatureFlagsDialog(true);
+  };
+
   return (
     <AdminLayout
-      title="Organization Management"
-      description="Manage registered organizations, verification status, and membership."
+      title={isPlatformAdmin ? "Organization Management" : "My Organization"}
+      description={isPlatformAdmin ? "Manage registered organizations, verification status, and membership." : "Manage your organization settings and members."}
     >
       <div className="space-y-6">
-        <div className="flex justify-end">
-          <Button onClick={() => setShowAddDialog(true)}>
-            <Plus className="mr-2 h-4 w-4" /> Add Organization
-          </Button>
-        </div>
+        {isPlatformAdmin && (
+          <div className="flex justify-end">
+            <Button onClick={() => setShowAddDialog(true)}>
+              <Plus className="mr-2 h-4 w-4" /> Add Organization
+            </Button>
+          </div>
+        )}
 
         <Card>
           {isLoading ? (
@@ -312,9 +331,17 @@ export default function AdminOrganizationsPage() {
                           <DropdownMenuItem onClick={() => handleManageMembers(org)}>
                             <UserPlus className="mr-2 h-4 w-4" /> Manage Members
                           </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteOrg(org)}>
-                            <Trash2 className="mr-2 h-4 w-4" /> Delete
+                          <DropdownMenuItem onClick={() => handleFeatureFlags(org)}>
+                            <Settings2 className="mr-2 h-4 w-4" /> Feature Flags
                           </DropdownMenuItem>
+                          {isPlatformAdmin && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteOrg(org)}>
+                                <Trash2 className="mr-2 h-4 w-4" /> Delete
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -326,9 +353,11 @@ export default function AdminOrganizationsPage() {
             <div className="text-center py-16 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>No organizations found</p>
-              <Button className="mt-4" onClick={() => setShowAddDialog(true)}>
-                <Plus className="mr-2 h-4 w-4" /> Create First Organization
-              </Button>
+              {isPlatformAdmin && (
+                <Button className="mt-4" onClick={() => setShowAddDialog(true)}>
+                  <Plus className="mr-2 h-4 w-4" /> Create First Organization
+                </Button>
+              )}
             </div>
           )}
         </Card>
@@ -522,6 +551,16 @@ export default function AdminOrganizationsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Feature Flags Editor */}
+      {selectedOrg && (
+        <OrgFeatureFlagsEditor
+          orgId={selectedOrg.id}
+          orgName={selectedOrg.name}
+          open={showFeatureFlagsDialog}
+          onOpenChange={setShowFeatureFlagsDialog}
+        />
+      )}
     </AdminLayout>
   );
 }

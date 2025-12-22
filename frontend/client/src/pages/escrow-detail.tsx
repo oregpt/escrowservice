@@ -2,13 +2,14 @@ import { Header } from "@/components/layout/Header";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { EscrowTimeline } from "@/components/escrow/EscrowTimeline";
 import { PartyInfo } from "@/components/escrow/PartyInfo";
+import { ExecuteTrafficPurchaseModal } from "@/components/escrow/ExecuteTrafficPurchaseModal";
 import { AttachmentList, type Attachment } from "@/components/attachments/AttachmentList";
 import { AttachmentUpload } from "@/components/attachments/AttachmentUpload";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, MessageSquare, AlertCircle, CheckCircle, Loader2, XCircle, Globe, Users, Lock, Scale, Gavel, Shield, Building, Clock, FileCheck } from "lucide-react";
+import { ArrowLeft, MessageSquare, AlertCircle, CheckCircle, Loader2, XCircle, Globe, Users, Lock, Scale, Gavel, Shield, Building, Clock, FileCheck, Zap } from "lucide-react";
 import { Link, useRoute } from "wouter";
 import { useState } from "react";
 import {
@@ -21,6 +22,7 @@ import {
   useFundEscrow,
   useConfirmEscrow,
   useCancelEscrow,
+  useIsFeatureEnabled,
 } from "@/hooks/use-api";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -68,6 +70,7 @@ export default function EscrowDetail() {
   const [arbiterCancelOpen, setArbiterCancelOpen] = useState(false);
   const [arbiterForceCompleteOpen, setArbiterForceCompleteOpen] = useState(false);
   const [arbiterReason, setArbiterReason] = useState('');
+  const [executeTrafficModalOpen, setExecuteTrafficModalOpen] = useState(false);
   const queryClient = useQueryClient();
 
   const acceptEscrow = useAcceptEscrow();
@@ -85,6 +88,9 @@ export default function EscrowDetail() {
     enabled: !!id && !!user,
   });
   const isArbiter = arbiterCheck?.isArbiter || false;
+
+  // Check if traffic_buyer feature is enabled for user's org
+  const { data: trafficBuyerEnabled } = useIsFeatureEnabled(user?.primaryOrgId, 'traffic_buyer');
 
   // Arbiter cancel mutation
   const arbiterCancelMutation = useMutation({
@@ -143,7 +149,7 @@ export default function EscrowDetail() {
 
   const handleFund = async () => {
     try {
-      await fundEscrow.mutateAsync(id);
+      await fundEscrow.mutateAsync({ id });
       toast({ title: "Deal funded", description: "Funds have been locked in the deal." });
     } catch (error) {
       toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to fund", variant: "destructive" });
@@ -404,12 +410,19 @@ export default function EscrowDetail() {
                   <div className="space-y-2 text-sm">
                     {Object.entries(escrow.metadata)
                       .filter(([key]) => key !== 'obligations')
-                      .map(([key, value]) => (
-                        <div key={key} className="flex justify-between">
-                          <span className="text-muted-foreground capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
-                          <span className="font-mono">{String(value)}</span>
-                        </div>
-                      ))}
+                      .map(([key, value]) => {
+                        const strValue = String(value);
+                        // Truncate long values (like validator party IDs) with ellipsis in middle
+                        const displayValue = strValue.length > 40
+                          ? `${strValue.slice(0, 16)}...${strValue.slice(-12)}`
+                          : strValue;
+                        return (
+                          <div key={key} className="flex justify-between gap-4">
+                            <span className="text-muted-foreground capitalize flex-shrink-0">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                            <span className="font-mono truncate" title={strValue}>{displayValue}</span>
+                          </div>
+                        );
+                      })}
                   </div>
                 </CardContent>
               </Card>
@@ -569,6 +582,22 @@ export default function EscrowDetail() {
                     <Button onClick={handleConfirm} disabled={confirmEscrow.isPending}>
                       {confirmEscrow.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       Confirm Delivery
+                    </Button>
+                  </div>
+                )}
+
+                {/* Execute Traffic Purchase for TRAFFIC_BUY escrows (Party B only) */}
+                {escrow.status === 'FUNDED' && isPartyB && escrow.serviceTypeId === 'TRAFFIC_BUY' && trafficBuyerEnabled && (
+                  <div className="flex items-center justify-between bg-white p-4 rounded-lg border border-amber-100 shadow-sm">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Zap className="h-4 w-4 text-amber-500" />
+                        <h4 className="font-medium">Execute Traffic Purchase</h4>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Purchase Canton traffic for the receiving validator.</p>
+                    </div>
+                    <Button variant="outline" className="border-amber-200 text-amber-700 hover:bg-amber-50" onClick={() => setExecuteTrafficModalOpen(true)}>
+                      Execute Purchase
                     </Button>
                   </div>
                 )}
@@ -830,6 +859,13 @@ export default function EscrowDetail() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Execute Traffic Purchase Modal */}
+        <ExecuteTrafficPurchaseModal
+          escrow={escrow}
+          open={executeTrafficModalOpen}
+          onOpenChange={setExecuteTrafficModalOpen}
+        />
       </PageContainer>
     </div>
   );

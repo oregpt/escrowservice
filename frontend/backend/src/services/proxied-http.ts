@@ -27,13 +27,46 @@ export interface ProxiedResponse<T = any> {
 }
 
 /**
- * Create a SOCKS proxy agent if tunnel is connected
+ * Check if SOCKS proxy port is listening
  */
-function getProxyAgent(): SocksProxyAgent | undefined {
+async function isProxyPortListening(port: number): Promise<boolean> {
+  const net = await import('net');
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    socket.setTimeout(1000);
+    socket.on('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.on('error', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.connect(port, '127.0.0.1');
+  });
+}
+
+/**
+ * Create a SOCKS proxy agent if tunnel is connected or external proxy is available
+ */
+async function getProxyAgentAsync(): Promise<SocksProxyAgent | undefined> {
   const proxyUrl = getProxyUrl();
   if (proxyUrl && isTunnelConnected()) {
     return new SocksProxyAgent(proxyUrl);
   }
+
+  // Check if external proxy is available on port 8080
+  const port = parseInt(process.env.SOCKS_PROXY_PORT || '8080', 10);
+  const listening = await isProxyPortListening(port);
+  if (listening) {
+    console.log(`[Proxied HTTP] External proxy detected on port ${port}`);
+    return new SocksProxyAgent(`socks5h://127.0.0.1:${port}`);
+  }
+
   return undefined;
 }
 
@@ -52,14 +85,16 @@ export async function proxiedRequest<T = any>(
     requireProxy = false,
   } = options;
 
-  const proxyAgent = getProxyAgent();
+  // Use async proxy detection that also checks for external proxy
+  const proxyAgent = await getProxyAgentAsync();
   const isProxied = !!proxyAgent;
 
   // Check if proxy is required but not available
   if (requireProxy && !isProxied) {
     const status = getTunnelStatus();
+    const port = parseInt(process.env.SOCKS_PROXY_PORT || '8080', 10);
     throw new Error(
-      `Proxy required but not available. Tunnel status: ${JSON.stringify(status)}`
+      `SSH SOCKS5 proxy not detected on port ${port}. Run this command in a terminal: ssh -D ${port} root@152.42.154.145`
     );
   }
 

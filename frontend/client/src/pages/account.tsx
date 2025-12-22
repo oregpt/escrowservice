@@ -70,6 +70,8 @@ export default function AccountPage() {
   };
 
   const handleDeposit = async () => {
+    console.log('[Deposit] handleDeposit called', { depositAmount, selectedProvider, selectedAccountId, selectedAccount });
+
     const amount = parseFloat(depositAmount);
     if (!amount || amount <= 0) {
       toast({
@@ -410,6 +412,13 @@ export default function AccountPage() {
                     )}
                     Continue to Payment
                   </Button>
+                  {/* Debug: show why button might be disabled */}
+                  {(!selectedProvider || !selectedAccountId) && (
+                    <p className="text-xs text-amber-600 text-center mt-2">
+                      {!selectedAccountId && "Select a wallet. "}
+                      {!selectedProvider && "Select a payment method."}
+                    </p>
+                  )}
                   {selectedProvider === 'stripe' && (
                     <p className="text-xs text-muted-foreground text-center">
                       Secure payment processing by Stripe

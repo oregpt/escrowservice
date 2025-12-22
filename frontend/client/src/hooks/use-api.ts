@@ -14,6 +14,9 @@ import {
   platformSettings,
   ccPrice,
   templates,
+  orgFeatureFlags,
+  trafficConfig,
+  trafficPurchase,
   type User,
   type UserRole,
   type AccountWithTotals,
@@ -35,6 +38,10 @@ import {
   type EscrowTemplate,
   type EscrowTemplateConfig,
   type CreateTemplateInput,
+  type FeatureKey,
+  type OrgFeatureFlag,
+  type UserTrafficConfig,
+  type TrafficPurchaseResponse,
 } from '@/lib/api';
 
 // ===== AUTH HOOKS =====
@@ -971,6 +978,121 @@ export function useRecordTemplateUsage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['templates'] });
+    },
+  });
+}
+
+// ===== ORG FEATURE FLAGS HOOKS =====
+
+export function useOrgFeatureFlags(orgId: string | undefined) {
+  return useQuery({
+    queryKey: ['org-feature-flags', orgId],
+    queryFn: async () => {
+      if (!orgId) return null;
+      const res = await orgFeatureFlags.getForOrg(orgId);
+      return res.success ? res.data?.flags : null;
+    },
+    enabled: !!orgId,
+  });
+}
+
+export function useIsFeatureEnabled(orgId: string | undefined, featureKey: FeatureKey) {
+  return useQuery({
+    queryKey: ['org-feature-flags', orgId, featureKey],
+    queryFn: async () => {
+      if (!orgId) return false;
+      const res = await orgFeatureFlags.isEnabled(orgId, featureKey);
+      return res.success ? res.data?.enabled : false;
+    },
+    enabled: !!orgId,
+  });
+}
+
+export function useSetFeatureFlag() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      orgId,
+      featureKey,
+      enabled,
+    }: {
+      orgId: string;
+      featureKey: FeatureKey;
+      enabled: boolean;
+    }) => {
+      const res = await orgFeatureFlags.set(orgId, featureKey, enabled);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['org-feature-flags', variables.orgId] });
+    },
+  });
+}
+
+// ===== USER TRAFFIC CONFIG HOOKS =====
+
+export function useTrafficConfig() {
+  return useQuery({
+    queryKey: ['traffic-config'],
+    queryFn: async () => {
+      const res = await trafficConfig.get();
+      return res.success ? res.data : null;
+    },
+  });
+}
+
+export function useUpsertTrafficConfig() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: { walletValidatorUrl: string; domainId: string }) => {
+      const res = await trafficConfig.upsert(data);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['traffic-config'] });
+    },
+  });
+}
+
+export function useDeleteTrafficConfig() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      const res = await trafficConfig.delete();
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['traffic-config'] });
+    },
+  });
+}
+
+// ===== TRAFFIC PURCHASE EXECUTION HOOKS =====
+
+export function useExecuteTrafficPurchase() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      escrowId,
+      bearerToken,
+    }: {
+      escrowId: string;
+      bearerToken: string;  // Never stored, passed at execution time
+    }) => {
+      const res = await trafficPurchase.execute(escrowId, bearerToken);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: (_data, variables) => {
+      // Refresh escrow to see updated traffic request status
+      queryClient.invalidateQueries({ queryKey: ['escrow', variables.escrowId] });
     },
   });
 }

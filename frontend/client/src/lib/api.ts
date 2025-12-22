@@ -588,6 +588,80 @@ export const ccPrice = {
   refresh: () => apiFetch<{ ccPriceUsd: number; source: string; refreshed: boolean }>('/cc-price/refresh', { method: 'POST' }),
 };
 
+// ===== ORG FEATURE FLAGS =====
+export type FeatureKey = 'tools_section' | 'traffic_buyer';
+
+export interface OrgFeatureFlag {
+  featureKey: FeatureKey;
+  enabled: boolean;
+}
+
+export const orgFeatureFlags = {
+  // Get available feature keys
+  getAvailableKeys: () => apiFetch<{ features: FeatureKey[] }>('/organizations/feature-keys'),
+
+  // Get feature flags for an organization
+  getForOrg: (orgId: string) =>
+    apiFetch<{ flags: OrgFeatureFlag[] }>(`/organizations/${orgId}/feature-flags`),
+
+  // Check if specific feature is enabled
+  isEnabled: (orgId: string, featureKey: FeatureKey) =>
+    apiFetch<{ featureKey: string; enabled: boolean }>(`/organizations/${orgId}/feature-flags/${featureKey}`),
+
+  // Set feature flag (org admin only)
+  set: (orgId: string, featureKey: FeatureKey, enabled: boolean) =>
+    apiFetch<OrgFeatureFlag>(`/organizations/${orgId}/feature-flags/${featureKey}`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    }),
+};
+
+// ===== USER TRAFFIC CONFIG =====
+export interface UserTrafficConfig {
+  id: string;
+  userId: string;
+  walletValidatorUrl: string;
+  domainId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const trafficConfig = {
+  // Get current user's traffic config
+  get: () => apiFetch<UserTrafficConfig | null>('/traffic-config'),
+
+  // Create or update traffic config
+  upsert: (data: { walletValidatorUrl: string; domainId: string }) =>
+    apiFetch<UserTrafficConfig>('/traffic-config', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  // Delete traffic config
+  delete: () =>
+    apiFetch<{ message: string }>('/traffic-config', {
+      method: 'DELETE',
+    }),
+};
+
+// ===== TRAFFIC PURCHASE EXECUTION =====
+export interface TrafficPurchaseResponse {
+  success: boolean;
+  trackingId?: string;
+  response?: Record<string, any>;  // Full API response with evidence IDs
+  error?: string;
+}
+
+export const trafficPurchase = {
+  // Execute traffic purchase for an escrow
+  // Bearer token is passed at execution time and NEVER stored
+  execute: (escrowId: string, bearerToken: string) =>
+    apiFetch<TrafficPurchaseResponse>(`/escrows/${escrowId}/execute-traffic-purchase`, {
+      method: 'POST',
+      body: JSON.stringify({ bearerToken }),
+    }),
+};
+
 // ===== ESCROW TEMPLATES =====
 export interface EscrowTemplateConfig {
   serviceTypeId?: string;

@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Clock, Shield, Globe, Loader2, CheckCircle, DollarSign, XCircle } from "lucide-react";
+import { ArrowRight, Clock, Shield, Globe, Loader2, CheckCircle, DollarSign, XCircle, Zap } from "lucide-react";
 import type { EscrowCardProps } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ConfirmationFormModal, type ConfirmationStep } from "./ConfirmationFormModal";
@@ -29,6 +29,10 @@ interface EscrowCardWithModalProps extends EscrowCardProps {
   onConfirmWithData?: (data: { notes: string; file?: File; holdUntilCompletion: boolean }) => Promise<void>;
   // Determine which confirm step this is (for modal title)
   confirmStep?: 'PARTY_B_CONFIRM' | 'PARTY_A_CONFIRM';
+  // Execute Traffic Purchase action (for TRAFFIC_BUY escrows)
+  canExecuteTraffic?: boolean;
+  onExecuteTraffic?: () => void;
+  isExecutingTraffic?: boolean;
 }
 
 export function EscrowCard({
@@ -58,6 +62,9 @@ export function EscrowCard({
   canCancel,
   onCancel,
   isCanceling,
+  canExecuteTraffic,
+  onExecuteTraffic,
+  isExecutingTraffic,
 }: EscrowCardWithModalProps) {
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -226,6 +233,25 @@ export function EscrowCard({
                     <CheckCircle className="h-3 w-3 mr-1" />
                   )}
                   Confirm
+                </Button>
+              )}
+              {/* Execute Purchase button - for TRAFFIC_BUY escrows */}
+              {canExecuteTraffic && onExecuteTraffic && (
+                <Button
+                  size="sm"
+                  className="h-8 text-xs bg-purple-600 hover:bg-purple-700"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onExecuteTraffic();
+                  }}
+                  disabled={isExecutingTraffic}
+                >
+                  {isExecutingTraffic ? (
+                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                  ) : (
+                    <Zap className="h-3 w-3 mr-1" />
+                  )}
+                  Execute Purchase
                 </Button>
               )}
               <Link href={`/escrow/${id}`}>

@@ -1,13 +1,14 @@
 import { Header } from "@/components/layout/Header";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { EscrowCard } from "@/components/escrow/EscrowCard";
+import { ExecuteTrafficPurchaseModal } from "@/components/escrow/ExecuteTrafficPurchaseModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
 import { Plus, Search, Filter, Loader2 } from "lucide-react";
 import { useState } from "react";
-import { useEscrows, useAuth, useAcceptEscrow, useFundEscrow, useConfirmEscrow, useCancelEscrow, useUploadAttachment } from "@/hooks/use-api";
+import { useEscrows, useAuth, useAcceptEscrow, useFundEscrow, useConfirmEscrow, useCancelEscrow, useUploadAttachment, useIsFeatureEnabled } from "@/hooks/use-api";
 import { useToast } from "@/hooks/use-toast";
 
 export default function EscrowList() {
@@ -15,6 +16,7 @@ export default function EscrowList() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [executeTrafficEscrow, setExecuteTrafficEscrow] = useState<typeof escrows[0] | null>(null);
 
   const { data: authData } = useAuth();
   const { data: escrows, isLoading } = useEscrows(statusFilter === "all" ? undefined : statusFilter);
@@ -25,6 +27,9 @@ export default function EscrowList() {
   const uploadAttachment = useUploadAttachment();
 
   const user = authData?.user;
+
+  // Check feature flags for traffic buyer
+  const trafficBuyerEnabled = useIsFeatureEnabled('traffic_buyer');
   const isAuthenticated = user?.isAuthenticated;
 
   // Filter escrows by search query
@@ -241,6 +246,14 @@ export default function EscrowList() {
       canCancel,
       onCancel: () => handleCancel(escrow.id),
       isCanceling: cancelEscrow.isPending,
+      // Execute Traffic Purchase - for TRAFFIC_BUY escrows when Party B and FUNDED
+      canExecuteTraffic: escrow.status === 'FUNDED' &&
+        isProvider &&
+        escrow.serviceTypeId === 'TRAFFIC_BUY' &&
+        trafficBuyerEnabled &&
+        isAuthenticated,
+      onExecuteTraffic: () => setExecuteTrafficEscrow(escrow),
+      isExecutingTraffic: false,
     };
   };
 
@@ -324,6 +337,19 @@ export default function EscrowList() {
           </div>
         )}
       </PageContainer>
+
+      {/* Execute Traffic Purchase Modal */}
+      {executeTrafficEscrow && (
+        <ExecuteTrafficPurchaseModal
+          escrow={{
+            ...executeTrafficEscrow,
+            partyAUser: null,
+            partyBUser: null,
+          }}
+          open={!!executeTrafficEscrow}
+          onOpenChange={(open) => !open && setExecuteTrafficEscrow(null)}
+        />
+      )}
     </div>
   );
 }
