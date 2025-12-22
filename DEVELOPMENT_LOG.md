@@ -7,6 +7,62 @@ EscrowService is a full-stack escrow platform built with React (Vite) frontend a
 
 ## Latest Session: December 22, 2025
 
+### 2-Step Confirmation Flow with Curl Preview
+
+Enhanced the traffic purchase modal with a 2-step confirmation process for better transparency and safety.
+
+**The Feature:**
+- **Step 1: Warning** - Shows transaction details and warns user about irreversibility
+  - Traffic amount (formatted as bytes/KB/MB/GB)
+  - Receiving validator party ID
+  - Escrow ID and amount
+  - Warning: "This action will trigger a real blockchain transaction and is irreversible"
+  - "Continue" button proceeds to Step 2
+
+- **Step 2: Curl Preview** - Shows the exact API call that will be made
+  - Full curl command with all parameters
+  - Bearer token and IAP cookie are partially masked for security
+  - Copy button to copy the curl command
+  - Note explaining tracking_id and expires_at are generated server-side
+  - "Execute on Chain" button triggers the actual purchase
+
+**Optional IAP Cookie Field:**
+- Added optional IAP Cookie field for MPCH validators
+- If provided, adds `--cookie` header to the request
+- Cookie is never stored - used only for this request and discarded immediately
+
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `client/src/components/escrow/ExecuteTrafficPurchaseModal.tsx` | 2-step flow, curl preview generation |
+| `client/src/lib/api.ts` | Added optional `iapCookie` parameter |
+| `client/src/hooks/use-api.ts` | Updated hook to pass iapCookie |
+| `backend/src/types/index.ts` | Added `iapCookie` to types |
+| `backend/src/routes/escrow.routes.ts` | Extract and pass iapCookie |
+| `backend/src/services/canton-traffic.service.ts` | Build Cookie header, add expires_at |
+
+**Curl Command Format (matches working test):**
+```bash
+curl --socks5-hostname 127.0.0.1:8080 -X POST '{walletUrl}/api/validator/v0/wallet/buy-traffic-requests' \
+  --header 'Content-Type: application/json' \
+  --header 'Authorization: Bearer {masked-token}' \
+  --cookie '{masked-cookie}'  # Only if IAP cookie provided
+  --data '{
+    "receiving_validator_party_id": "...",
+    "domain_id": "...",
+    "traffic_amount": 5,
+    "tracking_id": "traffic-<generated-uuid>",
+    "expires_at": 1767182403000000
+  }'
+```
+
+**Security:**
+- Bearer token displayed with first 20 and last 10 characters (middle masked)
+- IAP cookie displayed with first 30 and last 10 characters (middle masked)
+- Both are never stored - used only for the request
+
+---
+
 ### Bug Fix: Admin Page Role and Access Control
 
 Fixed multiple issues with the admin page showing incorrect role and allowing access to platform-only features for non-platform admins.
@@ -952,7 +1008,13 @@ SSH_PRIVATE_KEY="-----BEGIN OPENSSH PRIVATE KEY-----\n..."
 
 ## Session History
 
-### December 21, 2025 (Current)
+### December 22, 2025 (Current)
+- **2-Step Confirmation Flow** - Warning step + curl preview before executing traffic purchases
+- **Optional IAP Cookie** - Support for MPCH validators requiring GCP IAP authentication
+- **Curl Command Preview** - User can review exact API call before execution
+- **Bug Fix: Admin Page Role** - Fixed role display and sidebar filtering for org admins
+
+### December 21, 2025
 - **Confirmation Forms with Attachments** - Modal forms for Fund/Confirm with notes, file upload, and escrow-until-completion option
 - **Action Buttons on Deal Cards** - Dynamic Accept/Fund/Confirm/Cancel buttons based on status and role
 - **Cancellation Rules Update** - Only allow cancel before Party B accepts (PENDING status only)

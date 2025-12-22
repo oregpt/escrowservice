@@ -2,6 +2,7 @@ import { Header } from "@/components/layout/Header";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { AccountSummary } from "@/components/account/AccountSummary";
 import { EscrowCard } from "@/components/escrow/EscrowCard";
+import { ExecuteTrafficPurchaseModal } from "@/components/escrow/ExecuteTrafficPurchaseModal";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -9,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Link } from "wouter";
 import { Plus, Loader2, UserCheck, Bell, ArrowRight, Wallet, Settings } from "lucide-react";
-import { useEscrows, usePendingEscrows, useAccount, useAcceptEscrow, useCancelEscrow, useFundEscrow, useConfirmEscrow, useAuth, useUploadAttachment } from "@/hooks/use-api";
+import { useEscrows, usePendingEscrows, useAccount, useAcceptEscrow, useCancelEscrow, useFundEscrow, useConfirmEscrow, useAuth, useUploadAttachment, useIsFeatureEnabled } from "@/hooks/use-api";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 
@@ -20,9 +21,14 @@ export default function Dashboard() {
   const [showOriginatedByMe, setShowOriginatedByMe] = useState(true);
   const [showImTheProvider, setShowImTheProvider] = useState(true);
   const [showAllOther, setShowAllOther] = useState(false);
+  // Execute Traffic Purchase modal state
+  const [executeTrafficEscrow, setExecuteTrafficEscrow] = useState<any | null>(null);
 
   // Fetch data from API
   const { data: authData } = useAuth();
+
+  // Check feature flags for traffic buyer
+  const trafficBuyerEnabled = useIsFeatureEnabled('traffic_buyer');
   const { data: escrows, isLoading: escrowsLoading } = useEscrows();
   const { data: pendingEscrows, isLoading: pendingLoading } = usePendingEscrows();
   const { data: account, isLoading: accountLoading } = useAccount();
@@ -245,6 +251,12 @@ export default function Dashboard() {
       // Cancel: only available for partyA BEFORE partyB accepts (PENDING status only)
       // Once accepted/funded, only platform arbiter can cancel
       canCancel: isPartyA && escrow.status === 'PENDING',
+
+      // Execute Traffic Purchase: for TRAFFIC_BUY escrows when Party B and FUNDED
+      canExecuteTraffic: escrow.status === 'FUNDED' &&
+        isPartyB &&
+        escrow.serviceTypeId === 'TRAFFIC_BUY' &&
+        trafficBuyerEnabled,
     };
   };
 
@@ -484,6 +496,9 @@ export default function Dashboard() {
                       canCancel={actions.canCancel}
                       onCancel={() => handleCancel(escrow.id)}
                       isCanceling={cancelEscrow.isPending}
+                      canExecuteTraffic={actions.canExecuteTraffic}
+                      onExecuteTraffic={() => setExecuteTrafficEscrow(escrow)}
+                      isExecutingTraffic={false}
                     />
                   );
                 })}
@@ -530,6 +545,19 @@ export default function Dashboard() {
           </div>
         </div>
       </PageContainer>
+
+      {/* Execute Traffic Purchase Modal */}
+      {executeTrafficEscrow && (
+        <ExecuteTrafficPurchaseModal
+          escrow={{
+            ...executeTrafficEscrow,
+            partyAUser: null,
+            partyBUser: null,
+          }}
+          open={!!executeTrafficEscrow}
+          onOpenChange={(open) => !open && setExecuteTrafficEscrow(null)}
+        />
+      )}
     </div>
   );
 }
