@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, AlertCircle, CheckCircle, Zap, Copy, ExternalLink, Code, ArrowRight } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle, Zap, Copy, ExternalLink, Code, ArrowRight, Download } from 'lucide-react';
 import { useExecuteTrafficPurchase, useTrafficConfig } from '@/hooks/use-api';
 import { useToast } from '@/hooks/use-toast';
 import type { EscrowWithParties, TrafficPurchaseResponse } from '@/lib/api';
@@ -152,6 +152,44 @@ export function ExecuteTrafficPurchaseModal({ escrow, open, onOpenChange }: Exec
     toast({ title: 'Copied', description: 'Copied to clipboard' });
   };
 
+  // Download tracking ID and response as text file for evidence
+  const downloadEvidence = () => {
+    if (!result) return;
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `traffic-purchase-evidence-${timestamp}.txt`;
+
+    const content = `Canton Network Traffic Purchase Evidence
+========================================
+Date: ${new Date().toLocaleString()}
+Escrow ID: ${escrow.id}
+
+Tracking ID:
+${result.trackingId || 'N/A'}
+
+Response Details:
+${result.response ? JSON.stringify(result.response, null, 2) : 'N/A'}
+
+Purchase Details:
+- Traffic Amount: ${trafficAmountBytes ? formatBytes(trafficAmountBytes) : 'N/A'} (${trafficAmountBytes} bytes)
+- Receiving Validator: ${validatorPartyId || 'N/A'}
+- Domain ID: ${trafficConfig?.domainId || 'N/A'}
+- Wallet URL: ${trafficConfig?.walletValidatorUrl || 'N/A'}
+`;
+
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast({ title: 'Downloaded', description: 'Evidence file saved' });
+  };
+
   const hasConfig = trafficConfig && trafficConfig.walletValidatorUrl && trafficConfig.domainId;
 
   return (
@@ -204,6 +242,21 @@ export function ExecuteTrafficPurchaseModal({ escrow, open, onOpenChange }: Exec
                     </pre>
                   </div>
                 )}
+
+                {/* Download Evidence Button */}
+                <div className="mt-4 pt-3 border-t border-emerald-200">
+                  <Button
+                    variant="outline"
+                    className="w-full border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+                    onClick={downloadEvidence}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download Evidence
+                  </Button>
+                  <p className="text-xs text-emerald-600 mt-2 text-center">
+                    Save tracking ID and response as a text file for your records
+                  </p>
+                </div>
               </div>
             ) : (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4">
