@@ -264,7 +264,7 @@ router.post('/:id/execute-traffic-purchase', requireAuth, async (req, res) => {
   try {
     const userId = req.userId!;
     const { id } = req.params;
-    const { bearerToken }: ExecuteTrafficPurchaseRequest = req.body;
+    const { bearerToken, iapCookie }: ExecuteTrafficPurchaseRequest = req.body;
 
     // Validate bearer token provided
     if (!bearerToken || typeof bearerToken !== 'string') {
@@ -347,6 +347,7 @@ router.post('/:id/execute-traffic-purchase', requireAuth, async (req, res) => {
       receivingValidatorPartyId,
       trafficAmountBytes,
       bearerToken, // Never logged or stored
+      iapCookie,   // Optional - never logged or stored
     });
 
     const response: ApiResponse<TrafficPurchaseResponse> = {

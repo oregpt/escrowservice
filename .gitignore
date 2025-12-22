@@ -35,3 +35,7 @@ backend/uploads/
 
 # Test coverage
 coverage/
+
+# Scripts with secrets
+buy-traffic.sh
+buy-traffic-oneline.sh

@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, AlertCircle, CheckCircle, Zap, Copy, ExternalLink } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle, Zap, Copy, ExternalLink, Code, ArrowRight } from 'lucide-react';
 import { useExecuteTrafficPurchase, useTrafficConfig } from '@/hooks/use-api';
 import { useToast } from '@/hooks/use-toast';
 import type { EscrowWithParties, TrafficPurchaseResponse } from '@/lib/api';
@@ -15,11 +15,15 @@ interface ExecuteTrafficPurchaseModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
+// Confirmation steps: 0 = form, 1 = warning, 2 = curl preview
+type ConfirmationStep = 0 | 1 | 2;
+
 export function ExecuteTrafficPurchaseModal({ escrow, open, onOpenChange }: ExecuteTrafficPurchaseModalProps) {
   const { toast } = useToast();
   const [bearerToken, setBearerToken] = useState('');
+  const [iapCookie, setIapCookie] = useState('');
   const [result, setResult] = useState<TrafficPurchaseResponse | null>(null);
-  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [confirmationStep, setConfirmationStep] = useState<ConfirmationStep>(0);
 
   const { data: trafficConfig, isLoading: configLoading } = useTrafficConfig();
   const executeTrafficPurchase = useExecuteTrafficPurchase();
@@ -38,12 +42,57 @@ export function ExecuteTrafficPurchaseModal({ escrow, open, onOpenChange }: Exec
     return `${bytes} bytes`;
   };
 
-  const handleShowConfirmation = () => {
+  // Generate curl command preview for step 2
+  // This matches the working curl format from our test
+  const curlPreview = useMemo(() => {
+    if (!trafficConfig || !validatorPartyId || !trafficAmountBytes) return '';
+
+    const apiUrl = `${trafficConfig.walletValidatorUrl}/api/validator/v0/wallet/buy-traffic-requests`;
+    const trackingId = `traffic-<generated-uuid>`;
+    const expiresAt = (Date.now() + 24 * 60 * 60 * 1000) * 1000; // 24 hours from now in microseconds
+
+    const payload = {
+      receiving_validator_party_id: validatorPartyId,
+      domain_id: trafficConfig.domainId,
+      traffic_amount: trafficAmountBytes,
+      tracking_id: trackingId,
+      expires_at: expiresAt,
+    };
+
+    // Build the curl command - mask sensitive values
+    const maskedToken = bearerToken ? `${bearerToken.slice(0, 20)}...${bearerToken.slice(-10)}` : '<BEARER_TOKEN>';
+
+    let curlCmd = `curl --socks5-hostname 127.0.0.1:8080 -X POST '${apiUrl}' \\
+  --header 'Content-Type: application/json' \\
+  --header 'Authorization: Bearer ${maskedToken}'`;
+
+    if (iapCookie.trim()) {
+      // Show first 30 and last 10 chars of cookie
+      const maskedCookie = iapCookie.length > 50
+        ? `${iapCookie.slice(0, 30)}...${iapCookie.slice(-10)}`
+        : iapCookie;
+      curlCmd += ` \\
+  --cookie '${maskedCookie}'`;
+    }
+
+    curlCmd += ` \\
+  --data '${JSON.stringify(payload, null, 2)}'`;
+
+    return curlCmd;
+  }, [trafficConfig, validatorPartyId, trafficAmountBytes, bearerToken, iapCookie]);
+
+  // Step 1: Show warning
+  const handleShowWarning = () => {
     if (!bearerToken.trim()) {
       toast({ title: 'Error', description: 'Bearer token is required', variant: 'destructive' });
       return;
     }
-    setShowConfirmation(true);
+    setConfirmationStep(1);
+  };
+
+  // Step 2: Show curl preview
+  const handleShowCurlPreview = () => {
+    setConfirmationStep(2);
   };
 
   const handleExecute = async () => {
@@ -51,10 +100,12 @@ export function ExecuteTrafficPurchaseModal({ escrow, open, onOpenChange }: Exec
       const response = await executeTrafficPurchase.mutateAsync({
         escrowId: escrow.id,
         bearerToken: bearerToken.trim(),
+        iapCookie: iapCookie.trim() || undefined, // Optional - only include if provided
       });
       setResult(response);
       setBearerToken(''); // Clear token immediately after use
-      setShowConfirmation(false);
+      setIapCookie(''); // Clear cookie immediately after use
+      setConfirmationStep(0);
 
       if (response.success) {
         toast({ title: 'Success', description: 'Traffic purchase executed successfully' });
@@ -84,14 +135,15 @@ export function ExecuteTrafficPurchaseModal({ escrow, open, onOpenChange }: Exec
         description: errorMessage,
         variant: 'destructive',
       });
-      setShowConfirmation(false);
+      setConfirmationStep(0);
     }
   };
 
   const handleClose = () => {
     setBearerToken('');
+    setIapCookie('');
     setResult(null);
-    setShowConfirmation(false);
+    setConfirmationStep(0);
     onOpenChange(false);
   };
 
@@ -263,6 +315,26 @@ export function ExecuteTrafficPurchaseModal({ escrow, open, onOpenChange }: Exec
               </div>
             )}
 
+            {/* IAP Cookie Input (Optional) */}
+            {hasConfig && (
+              <div className="space-y-2">
+                <Label htmlFor="iap-cookie">
+                  IAP Cookie <span className="text-muted-foreground font-normal">(optional - this is a short term solution)</span>
+                </Label>
+                <Input
+                  id="iap-cookie"
+                  type="password"
+                  placeholder="Enter GCP IAP cookie if required (e.g., __Host-GCP_IAP_AUTH_TOKEN_...)"
+                  value={iapCookie}
+                  onChange={(e) => setIapCookie(e.target.value)}
+                  disabled={executeTrafficPurchase.isPending}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Required for MPCH validators. Your IAP cookie is never stored - used only for this request.
+                </p>
+              </div>
+            )}
+
             {/* Validation warnings */}
             {(!validatorPartyId || !trafficAmountBytes) && (
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm">
@@ -278,7 +350,7 @@ export function ExecuteTrafficPurchaseModal({ escrow, open, onOpenChange }: Exec
                 Cancel
               </Button>
               <Button
-                onClick={handleShowConfirmation}
+                onClick={handleShowWarning}
                 disabled={
                   !hasConfig ||
                   !bearerToken.trim() ||
@@ -286,47 +358,121 @@ export function ExecuteTrafficPurchaseModal({ escrow, open, onOpenChange }: Exec
                   !trafficAmountBytes
                 }
               >
-                Execute Purchase
+                Continue
+                <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </DialogFooter>
           </div>
         )}
 
-        {/* Confirmation Dialog */}
-        {showConfirmation && (
+        {/* Step 1: Warning Confirmation */}
+        {confirmationStep === 1 && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 max-w-md mx-4 shadow-xl">
               <div className="flex items-center gap-3 mb-4">
                 <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center">
                   <AlertCircle className="h-5 w-5 text-amber-600" />
                 </div>
-                <h3 className="text-lg font-semibold">Confirm Execution</h3>
+                <h3 className="text-lg font-semibold">Confirm Traffic Purchase</h3>
               </div>
 
               <div className="mb-6 space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  This will execute a traffic purchase of <strong>{trafficAmountBytes ? formatBytes(trafficAmountBytes) : 'unknown'}</strong> for escrow <strong>#{escrow.id.slice(0, 8)}</strong>.
+                  This will purchase <strong>{trafficAmountBytes ? formatBytes(trafficAmountBytes) : 'unknown'}</strong> of Canton Network traffic for:
                 </p>
-                <p className="text-sm font-medium text-red-600">
-                  This action is irreversible. Are you sure you want to proceed?
+                <div className="bg-slate-50 rounded-lg p-3 space-y-2 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Receiving Validator:</span>
+                    <p className="font-mono text-xs break-all mt-1">{validatorPartyId}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Escrow:</span>
+                    <span className="ml-2 font-medium">#{escrow.id.slice(0, 8)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Amount:</span>
+                    <span className="ml-2 font-medium">${escrow.amount.toFixed(2)}</span>
+                  </div>
+                </div>
+                <p className="text-sm font-medium text-amber-700">
+                  ⚠️ This action will trigger a real blockchain transaction and is irreversible.
                 </p>
               </div>
 
               <div className="flex gap-3 justify-end">
                 <Button
                   variant="outline"
-                  onClick={() => setShowConfirmation(false)}
+                  onClick={() => setConfirmationStep(0)}
+                >
+                  Go Back
+                </Button>
+                <Button
+                  onClick={handleShowCurlPreview}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  Continue
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Curl Preview & Execute */}
+        {confirmationStep === 2 && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-2xl mx-4 shadow-xl max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                  <Code className="h-5 w-5 text-blue-600" />
+                </div>
+                <h3 className="text-lg font-semibold">Review API Call</h3>
+              </div>
+
+              <div className="mb-4">
+                <p className="text-sm text-muted-foreground mb-3">
+                  Please review the exact API call that will be made. The bearer token and cookie are partially masked for security.
+                </p>
+
+                <div className="relative">
+                  <pre className="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs overflow-x-auto whitespace-pre-wrap font-mono leading-relaxed">
+                    {curlPreview}
+                  </pre>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="absolute top-2 right-2 h-7 px-2"
+                    onClick={() => copyToClipboard(curlPreview)}
+                  >
+                    <Copy className="h-3 w-3 mr-1" />
+                    Copy
+                  </Button>
+                </div>
+
+                <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p className="text-xs text-amber-800">
+                    <strong>Note:</strong> The actual <code className="bg-amber-100 px-1 rounded">tracking_id</code> and <code className="bg-amber-100 px-1 rounded">expires_at</code> will be generated by the server at execution time.
+                    The call will be routed through the SSH/SOCKS5 tunnel for IP whitelisting.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setConfirmationStep(1)}
                   disabled={executeTrafficPurchase.isPending}
                 >
-                  Cancel
+                  Go Back
                 </Button>
                 <Button
                   onClick={handleExecute}
                   disabled={executeTrafficPurchase.isPending}
-                  className="bg-red-600 hover:bg-red-700"
+                  className="bg-emerald-600 hover:bg-emerald-700"
                 >
                   {executeTrafficPurchase.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Yes, Execute Purchase
+                  <Zap className="mr-2 h-4 w-4" />
+                  Execute on Chain
                 </Button>
               </div>
             </div>

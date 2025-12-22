@@ -655,10 +655,11 @@ export interface TrafficPurchaseResponse {
 export const trafficPurchase = {
   // Execute traffic purchase for an escrow
   // Bearer token is passed at execution time and NEVER stored
-  execute: (escrowId: string, bearerToken: string) =>
+  // IAP cookie is optional - required for MPCH validators
+  execute: (escrowId: string, bearerToken: string, iapCookie?: string) =>
     apiFetch<TrafficPurchaseResponse>(`/escrows/${escrowId}/execute-traffic-purchase`, {
       method: 'POST',
-      body: JSON.stringify({ bearerToken }),
+      body: JSON.stringify({ bearerToken, iapCookie }),
     }),
 };
 

@@ -1082,11 +1082,13 @@ export function useExecuteTrafficPurchase() {
     mutationFn: async ({
       escrowId,
       bearerToken,
+      iapCookie,
     }: {
       escrowId: string;
       bearerToken: string;  // Never stored, passed at execution time
+      iapCookie?: string;   // Optional - required for MPCH validators, never stored
     }) => {
-      const res = await trafficPurchase.execute(escrowId, bearerToken);
+      const res = await trafficPurchase.execute(escrowId, bearerToken, iapCookie);
       if (!res.success) throw new Error(res.error);
       return res.data;
     },

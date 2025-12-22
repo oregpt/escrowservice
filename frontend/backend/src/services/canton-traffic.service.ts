@@ -132,6 +132,7 @@ export class CantonTrafficService {
       receivingValidatorPartyId,
       trafficAmountBytes,
       bearerToken, // Passed at execution time, never stored
+      iapCookie,   // Optional - for MPCH validators, never stored
     } = params;
 
     // Generate tracking ID
@@ -141,26 +142,35 @@ export class CantonTrafficService {
     const tunnelStatus = getTunnelStatus();
     console.log(`[Canton Traffic] Executing with user credentials, tunnel: ${JSON.stringify(tunnelStatus)}`);
 
-    // Build API URL - endpoint TBD by user (placeholder for now)
-    // TODO: User will provide exact endpoint format
+    // Build API URL
     const apiUrl = `${walletValidatorUrl}/api/validator/v0/wallet/buy-traffic-requests`;
 
-    // Prepare request payload (never includes bearer token in logs)
+    // Generate expires_at (24 hours from now in microseconds)
+    const expiresAt = (Date.now() + 24 * 60 * 60 * 1000) * 1000;
+
+    // Prepare request payload (never includes bearer token or cookie in logs)
     const requestPayload = {
       receiving_validator_party_id: receivingValidatorPartyId,
       domain_id: domainId,
       traffic_amount: trafficAmountBytes,
       tracking_id: trackingId,
+      expires_at: expiresAt,
     };
+
+    // Build headers - always include Authorization, optionally include Cookie
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${bearerToken}`, // Never logged
+    };
+    if (iapCookie) {
+      headers['Cookie'] = iapCookie; // Never logged
+    }
 
     try {
       // Make proxied API call
       const response = await proxiedPost(
         apiUrl,
         requestPayload,
-        {
-          'Authorization': `Bearer ${bearerToken}`, // Never logged
-        },
+        headers,
         { requireProxy: true } // Always require tunnel
       );
 

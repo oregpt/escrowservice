@@ -502,6 +502,7 @@ export interface TrafficPurchaseParams {
   receivingValidatorPartyId: string;
   trafficAmountBytes: number;
   bearerToken: string;  // Passed at execution time, NEVER stored
+  iapCookie?: string;   // Optional - required for MPCH validators, NEVER stored
 }
 
 export interface TrafficPurchaseResponse {
@@ -520,4 +521,5 @@ export interface UpsertTrafficConfigRequest {
 // Request type for executing traffic purchase
 export interface ExecuteTrafficPurchaseRequest {
   bearerToken: string;  // Passed at execution time, NEVER stored
+  iapCookie?: string;   // Optional - required for MPCH validators, NEVER stored
 }
