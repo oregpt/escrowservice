@@ -39,3 +39,4 @@ coverage/
 # Scripts with secrets
 buy-traffic.sh
 buy-traffic-oneline.sh
+check-traffic-status.sh

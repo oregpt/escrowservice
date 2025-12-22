@@ -8,14 +8,15 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Link } from "wouter";
-import { Plus, Loader2, UserCheck, Bell, ArrowRight, Wallet, Settings } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { Plus, Loader2, UserCheck, Bell, ArrowRight, Wallet, Zap } from "lucide-react";
 import { useEscrows, usePendingEscrows, useAccount, useAcceptEscrow, useCancelEscrow, useFundEscrow, useConfirmEscrow, useAuth, useUploadAttachment, useIsFeatureEnabled } from "@/hooks/use-api";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export default function Dashboard() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [escrowFilter, setEscrowFilter] = useState<'all' | 'org'>('all');
   // Role filter checkboxes (apply to both tabs)
   const [showOriginatedByMe, setShowOriginatedByMe] = useState(true);
@@ -25,7 +26,14 @@ export default function Dashboard() {
   const [executeTrafficEscrow, setExecuteTrafficEscrow] = useState<any | null>(null);
 
   // Fetch data from API
-  const { data: authData } = useAuth();
+  const { data: authData, isLoading: authLoading } = useAuth();
+
+  // Redirect unauthenticated users to deals page
+  useEffect(() => {
+    if (!authLoading && !authData?.user?.isAuthenticated) {
+      setLocation('/escrow');
+    }
+  }, [authLoading, authData?.user?.isAuthenticated, setLocation]);
 
   // Check feature flags for traffic buyer
   const trafficBuyerEnabled = useIsFeatureEnabled('traffic_buyer');
@@ -47,7 +55,7 @@ export default function Dashboard() {
   // Separate pending escrows into categories:
   // 1. Assigned specifically to you (by userId OR by email invite)
   // 2. Assigned to your organization (any member can accept)
-  // Note: True "open offers" (anyone can accept) just appear in the regular deals list
+  // 3. Open offers (anyone can accept - no specific party B assigned)
   const assignedToYou = pendingEscrows?.filter(e =>
     e.partyBUserId === userId ||
     (userEmail && e.counterpartyEmail?.toLowerCase() === userEmail.toLowerCase())
@@ -55,6 +63,13 @@ export default function Dashboard() {
   const assignedToYourOrg = pendingEscrows?.filter(e =>
     e.partyBOrgId === userOrgId && e.partyBUserId !== userId &&
     !(userEmail && e.counterpartyEmail?.toLowerCase() === userEmail.toLowerCase())
+  ) || [];
+  const openOffers = pendingEscrows?.filter(e =>
+    !e.partyBUserId &&
+    !e.partyBOrgId &&
+    !e.counterpartyEmail &&
+    e.partyAUserId !== userId && // Not your own escrow
+    e.partyAOrgId !== userOrgId  // Not from your org
   ) || [];
 
   // Filter active escrows (not completed/canceled)
@@ -91,7 +106,7 @@ export default function Dashboard() {
   const activeEscrows = applyRoleFilter(baseEscrows);
 
   // Total pending count for notification
-  const totalPendingCount = assignedToYou.length + assignedToYourOrg.length;
+  const totalPendingCount = assignedToYou.length + assignedToYourOrg.length + openOffers.length;
 
   const handleAccept = async (escrowId: string) => {
     try {
@@ -274,8 +289,10 @@ export default function Dashboard() {
             <AlertDescription className="text-amber-800 flex items-center justify-between">
               <span>
                 {assignedToYou.length > 0 && `${assignedToYou.length} assigned to you`}
-                {assignedToYou.length > 0 && assignedToYourOrg.length > 0 && ' • '}
+                {assignedToYou.length > 0 && (assignedToYourOrg.length > 0 || openOffers.length > 0) && ' • '}
                 {assignedToYourOrg.length > 0 && `${assignedToYourOrg.length} for your organization`}
+                {assignedToYourOrg.length > 0 && openOffers.length > 0 && ' • '}
+                {openOffers.length > 0 && `${openOffers.length} open offer${openOffers.length > 1 ? 's' : ''}`}
               </span>
               <Button
                 variant="outline"
@@ -531,14 +548,16 @@ export default function Dashboard() {
                     <Plus className="mr-2 h-4 w-4" /> Create Deal
                   </Button>
                 </Link>
+                {trafficBuyerEnabled && (
+                  <Link href="/tools/buy-traffic">
+                    <Button variant="outline" className="w-full justify-start">
+                      <Zap className="mr-2 h-4 w-4 text-amber-500" /> Buy Traffic (onchain)
+                    </Button>
+                  </Link>
+                )}
                 <Link href="/account">
                   <Button variant="outline" className="w-full justify-start">
                     <Wallet className="mr-2 h-4 w-4" /> View Balances
-                  </Button>
-                </Link>
-                <Link href="/settings">
-                  <Button variant="outline" className="w-full justify-start">
-                    <Settings className="mr-2 h-4 w-4" /> Auto-Accept Settings
                   </Button>
                 </Link>
               </div>

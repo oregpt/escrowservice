@@ -664,6 +664,17 @@ export interface TrafficPurchaseStatus {
   cantonResponse?: Record<string, any>;
 }
 
+export interface TrafficStatusCheckResponse {
+  trackingId: string;
+  cantonStatus: {
+    status: string;
+    failure_reason?: string;
+    rejection_reason?: string;
+    [key: string]: any;
+  };
+  autoConfirmed: boolean;
+}
+
 export const trafficPurchase = {
   // Execute traffic purchase for an escrow
   // Bearer token is passed at execution time and NEVER stored
@@ -672,6 +683,55 @@ export const trafficPurchase = {
     apiFetch<TrafficPurchaseResponse>(`/escrows/${escrowId}/execute-traffic-purchase`, {
       method: 'POST',
       body: JSON.stringify({ bearerToken, iapCookie }),
+    }),
+
+  // Check the status of a traffic purchase request from Canton API
+  // Returns live status and auto-confirms escrow if status is "completed"
+  checkStatus: (escrowId: string, trackingId: string, bearerToken: string, iapCookie?: string) =>
+    apiFetch<TrafficStatusCheckResponse>(`/escrows/${escrowId}/check-traffic-status`, {
+      method: 'POST',
+      body: JSON.stringify({ trackingId, bearerToken, iapCookie }),
+    }),
+};
+
+// ===== STANDALONE TRAFFIC PURCHASE (No Escrow) =====
+export interface StandaloneTrafficPurchaseRequest {
+  receivingValidatorPartyId: string;
+  trafficAmountBytes: number;
+  bearerToken: string;
+  iapCookie?: string;
+}
+
+export interface StandaloneStatusCheckRequest {
+  trackingId: string;
+  bearerToken: string;
+  iapCookie?: string;
+}
+
+export interface StandaloneStatusCheckResponse {
+  trackingId: string;
+  cantonStatus: {
+    status: string;
+    failure_reason?: string;
+    rejection_reason?: string;
+    [key: string]: any;
+  };
+}
+
+export const standaloneTraffic = {
+  // Execute standalone traffic purchase (no escrow required)
+  // Bearer token is passed at execution time and NEVER stored
+  execute: (data: StandaloneTrafficPurchaseRequest) =>
+    apiFetch<TrafficPurchaseResponse>('/traffic-config/execute', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Check status of a traffic purchase
+  checkStatus: (data: StandaloneStatusCheckRequest) =>
+    apiFetch<StandaloneStatusCheckResponse>('/traffic-config/check-status', {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
 };
 

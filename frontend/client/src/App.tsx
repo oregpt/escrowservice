@@ -21,6 +21,7 @@ import AdminOrganizationsPage from "@/pages/admin/organizations";
 import AdminDashboard from "@/pages/admin/dashboard";
 import AdminSettingsPage from "@/pages/admin/settings";
 import ResetPasswordPage from "@/pages/reset-password";
+import BuyTrafficPage from "@/pages/buy-traffic";
 
 function Router() {
   return (
@@ -35,6 +36,7 @@ function Router() {
       <Route path="/payment/success" component={PaymentSuccessPage} />
       <Route path="/payment/cancel" component={PaymentCancelPage} />
       <Route path="/reset-password" component={ResetPasswordPage} />
+      <Route path="/tools/buy-traffic" component={BuyTrafficPage} />
 
       {/* Admin Routes */}
       <Route path="/admin" component={AdminDashboard} />

@@ -11,8 +11,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ArrowLeft, Check, Shield, Loader2, Users, User, Globe, Mail, Building, Scale, Gavel, Bot, FileText, Plus, Pencil, Trash2, Save, ChevronDown } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Link, useLocation } from "wouter";
-import { useState, useMemo } from "react";
-import { useCreateEscrow, useAvailableServiceTypes, usePublicPlatformSettings, useCCPrice, useTemplates, useCreateTemplate, useRecordTemplateUsage, useDeleteTemplate } from "@/hooks/use-api";
+import { useState, useMemo, useEffect } from "react";
+import { useAuth, useCreateEscrow, useAvailableServiceTypes, usePublicPlatformSettings, useCCPrice, useTemplates, useCreateTemplate, useRecordTemplateUsage, useDeleteTemplate } from "@/hooks/use-api";
 import { useToast } from "@/hooks/use-toast";
 import type { ServiceTypeId, CreateEscrowRequest, PrivacyLevel, ArbiterType, EscrowTemplate, EscrowTemplateConfig } from "@/lib/api";
 import { Lock, Eye, Building2 } from "lucide-react";
@@ -38,6 +38,20 @@ export default function EscrowNew() {
   const [step, setStep] = useState(0); // Start at step 0 (template selection)
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+
+  // Auth check - redirect unauthenticated users
+  const { data: authData, isLoading: authLoading } = useAuth();
+
+  useEffect(() => {
+    if (!authLoading && !authData?.user?.isAuthenticated) {
+      toast({
+        title: 'Authentication Required',
+        description: 'Please sign in to create a deal.',
+        variant: 'destructive',
+      });
+      setLocation('/escrow');
+    }
+  }, [authLoading, authData?.user?.isAuthenticated, setLocation, toast]);
 
   // Template state
   const [selectedTemplate, setSelectedTemplate] = useState<EscrowTemplate | null>(null);

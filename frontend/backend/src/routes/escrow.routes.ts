@@ -462,7 +462,7 @@ router.post('/:id/messages', requireAuth, async (req, res) => {
 // TRAFFIC PURCHASE STATUS
 // ============================================
 
-// Get traffic purchase status for an escrow
+// Get traffic purchase status for an escrow (from local DB)
 router.get('/:id/traffic-purchase-status', optionalAuth, async (req, res) => {
   try {
     const { id } = req.params;
@@ -493,6 +493,123 @@ router.get('/:id/traffic-purchase-status', optionalAuth, async (req, res) => {
         executedAt: trafficRequest.executedAt,
         trackingId: trafficRequest.trackingId,
         cantonResponse: trafficRequest.cantonResponse,
+      },
+    });
+  } catch (error) {
+    const response: ApiResponse<null> = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+    res.status(500).json(response);
+  }
+});
+
+// Check traffic purchase status from Canton API (live status check)
+// This calls the Canton wallet API to get real-time status of a purchase request
+router.post('/:id/check-traffic-status', requireAuth, async (req, res) => {
+  try {
+    const userId = req.userId!;
+    const { id } = req.params;
+    const { trackingId, bearerToken, iapCookie } = req.body;
+
+    // Validate required fields
+    if (!trackingId || typeof trackingId !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Tracking ID is required',
+      });
+    }
+
+    if (!bearerToken || typeof bearerToken !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Bearer token is required',
+      });
+    }
+
+    // Get escrow to verify user access and get config
+    const escrow = await escrowService.getEscrowById(id);
+    if (!escrow) {
+      return res.status(404).json({
+        success: false,
+        error: 'Escrow not found',
+      });
+    }
+
+    // Check user is Party B
+    if (escrow.partyBUserId !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Only Party B (counterparty) can check traffic purchase status',
+      });
+    }
+
+    // Get user's traffic config
+    const trafficConfig = await userTrafficConfigService.getConfig(userId);
+    if (!trafficConfig) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please configure your traffic settings first',
+      });
+    }
+
+    // Build the status check URL
+    const statusUrl = `${trafficConfig.walletValidatorUrl}/api/validator/v0/wallet/buy-traffic-requests/${trackingId}/status`;
+
+    // Build headers
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${bearerToken}`,
+    };
+    if (iapCookie) {
+      headers['Cookie'] = iapCookie;
+    }
+
+    // Make the status check call via proxy
+    const { proxiedPost: proxiedFetch } = await import('../services/proxied-http.js');
+    const response = await proxiedFetch(
+      statusUrl,
+      {}, // Empty body for status check
+      headers,
+      { requireProxy: true }
+    );
+
+    console.log(`[Canton Traffic] Status check response: ${response.status}`);
+
+    // Parse the response
+    const statusResponse = response.data;
+
+    // If status is "completed" or similar success status, auto-confirm the escrow
+    if (statusResponse?.status === 'completed' || statusResponse?.status === 'success') {
+      // Auto-confirm the escrow if it's still in FUNDED status (Party B confirm)
+      if (escrow.status === 'FUNDED') {
+        try {
+          // First confirm the escrow
+          await escrowService.confirmEscrow(id, userId);
+
+          // Then add a message with the status details
+          const confirmNotes = `[Auto-Confirmed via Canton Traffic Status Check]
+
+Tracking ID: ${trackingId}
+
+Canton Status Response:
+${JSON.stringify(statusResponse, null, 2)}`;
+
+          await escrowService.addMessage(id, userId, confirmNotes);
+          console.log(`[Canton Traffic] Auto-confirmed escrow ${id} after successful traffic purchase`);
+        } catch (confirmError) {
+          console.error(`[Canton Traffic] Failed to auto-confirm escrow:`, confirmError);
+          // Don't fail the status check, just log the error
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        trackingId,
+        cantonStatus: statusResponse,
+        autoConfirmed: (statusResponse?.status === 'completed' || statusResponse?.status === 'success') && escrow.status === 'FUNDED',
       },
     });
   } catch (error) {

@@ -261,6 +261,192 @@ export class CantonTrafficService {
     }
   }
 
+  /**
+   * Execute standalone traffic purchase (no escrow required)
+   * For direct traffic purchases from the dashboard
+   */
+  async executeStandaloneTrafficPurchase(
+    params: {
+      userId: string;
+      walletValidatorUrl: string;
+      domainId: string;
+      receivingValidatorPartyId: string;
+      trafficAmountBytes: number;
+      bearerToken: string;
+      iapCookie?: string;
+    }
+  ): Promise<TrafficPurchaseResponse> {
+    const {
+      userId,
+      walletValidatorUrl,
+      domainId,
+      receivingValidatorPartyId,
+      trafficAmountBytes,
+      bearerToken,
+      iapCookie,
+    } = params;
+
+    // Generate tracking ID
+    const trackingId = `traffic-standalone-${uuidv4()}`;
+
+    // Check tunnel status
+    const tunnelStatus = getTunnelStatus();
+    console.log(`[Canton Traffic] Executing standalone purchase, tunnel: ${JSON.stringify(tunnelStatus)}`);
+
+    // Build API URL
+    const apiUrl = `${walletValidatorUrl}/api/validator/v0/wallet/buy-traffic-requests`;
+
+    // Generate expires_at (24 hours from now in microseconds)
+    const expiresAt = (Date.now() + 24 * 60 * 60 * 1000) * 1000;
+
+    // Prepare request payload
+    const requestPayload = {
+      receiving_validator_party_id: receivingValidatorPartyId,
+      domain_id: domainId,
+      traffic_amount: trafficAmountBytes,
+      tracking_id: trackingId,
+      expires_at: expiresAt,
+    };
+
+    // Build headers
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${bearerToken}`,
+    };
+    if (iapCookie) {
+      headers['Cookie'] = iapCookie;
+    }
+
+    try {
+      // Make proxied API call
+      const response = await proxiedPost(
+        apiUrl,
+        requestPayload,
+        headers,
+        { requireProxy: true }
+      );
+
+      console.log(`[Canton Traffic] Standalone response status: ${response.status}, proxied: ${response.proxied}`);
+
+      // Log the request/response (no escrow_id for standalone)
+      await pool.query(
+        `INSERT INTO canton_traffic_requests (
+          escrow_id, receiving_validator_party_id, domain_id,
+          traffic_amount_bytes, tracking_id, canton_response, executed_at
+        )
+        VALUES (NULL, $1, $2, $3, $4, $5, NOW())
+        ON CONFLICT (tracking_id) DO UPDATE SET
+          canton_response = $5, executed_at = NOW()`,
+        [
+          receivingValidatorPartyId,
+          domainId,
+          trafficAmountBytes,
+          trackingId,
+          JSON.stringify({
+            status: response.status,
+            data: response.data,
+            proxied: response.proxied,
+            requestPayload,
+            userId, // Track who executed
+            standalone: true,
+          }),
+        ]
+      );
+
+      // Check for error response
+      if (response.status >= 400) {
+        return {
+          success: false,
+          trackingId,
+          response: response.data,
+          error: `Canton API returned status ${response.status}`,
+        };
+      }
+
+      return {
+        success: true,
+        trackingId,
+        response: response.data,
+      };
+    } catch (error) {
+      let errorMessage = 'Unknown error';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        const proxiedError = error as any;
+        if (proxiedError.originalError) {
+          errorMessage = `${error.message}. Original: ${proxiedError.originalError.message}`;
+        }
+        if (proxiedError.url) {
+          errorMessage = `${errorMessage}. URL: ${proxiedError.url}`;
+        }
+      }
+      console.error(`[Canton Traffic] Standalone execution failed:`, errorMessage);
+
+      // Log error to database
+      await pool.query(
+        `INSERT INTO canton_traffic_requests (
+          escrow_id, receiving_validator_party_id, domain_id,
+          traffic_amount_bytes, tracking_id, canton_response
+        )
+        VALUES (NULL, $1, $2, $3, $4, $5)
+        ON CONFLICT (tracking_id) DO UPDATE SET
+          canton_response = $5`,
+        [
+          receivingValidatorPartyId,
+          domainId,
+          trafficAmountBytes,
+          trackingId,
+          JSON.stringify({
+            error: errorMessage,
+            requestPayload,
+            userId,
+            standalone: true,
+          }),
+        ]
+      );
+
+      return {
+        success: false,
+        trackingId,
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Check traffic purchase status via Canton API
+   */
+  async checkTrafficPurchaseStatus(
+    params: {
+      walletValidatorUrl: string;
+      trackingId: string;
+      bearerToken: string;
+      iapCookie?: string;
+    }
+  ): Promise<{ status: string; data: any }> {
+    const { walletValidatorUrl, trackingId, bearerToken, iapCookie } = params;
+
+    const statusUrl = `${walletValidatorUrl}/api/validator/v0/wallet/buy-traffic-requests/${trackingId}/status`;
+
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${bearerToken}`,
+    };
+    if (iapCookie) {
+      headers['Cookie'] = iapCookie;
+    }
+
+    const response = await proxiedPost(
+      statusUrl,
+      {},
+      headers,
+      { requireProxy: true }
+    );
+
+    return {
+      status: response.data?.status || 'unknown',
+      data: response.data,
+    };
+  }
+
   // Get traffic request by ID
   async getTrafficRequestById(requestId: string): Promise<CantonTrafficRequest | null> {
     const result = await pool.query(

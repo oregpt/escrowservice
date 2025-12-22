@@ -5,8 +5,10 @@ import { ExecuteTrafficPurchaseModal } from "@/components/escrow/ExecuteTrafficP
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { Link } from "wouter";
-import { Plus, Search, Filter, Loader2 } from "lucide-react";
+import { Plus, Search, Filter, Loader2, Globe, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { useEscrows, useAuth, useAcceptEscrow, useFundEscrow, useConfirmEscrow, useCancelEscrow, useUploadAttachment, useIsFeatureEnabled } from "@/hooks/use-api";
 import { useToast } from "@/hooks/use-toast";
@@ -15,11 +17,12 @@ export default function EscrowList() {
   const { toast } = useToast();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [showOnlyMyDeals, setShowOnlyMyDeals] = useState(false);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [executeTrafficEscrow, setExecuteTrafficEscrow] = useState<typeof escrows[0] | null>(null);
 
   const { data: authData } = useAuth();
-  const { data: escrows, isLoading } = useEscrows(statusFilter === "all" ? undefined : statusFilter);
+  const { data: escrows, isLoading, refetch, isFetching } = useEscrows(statusFilter === "all" ? undefined : statusFilter);
   const acceptEscrow = useAcceptEscrow();
   const fundEscrow = useFundEscrow();
   const confirmEscrow = useConfirmEscrow();
@@ -32,8 +35,15 @@ export default function EscrowList() {
   const trafficBuyerEnabled = useIsFeatureEnabled('traffic_buyer');
   const isAuthenticated = user?.isAuthenticated;
 
-  // Filter escrows by search query
+  // Filter escrows by search query and "my deals" filter
   const filteredEscrows = escrows?.filter(escrow => {
+    // Apply "only my deals" filter - exclude open offers where user is not involved
+    if (showOnlyMyDeals && isAuthenticated) {
+      const isInvolved = escrow.partyAUserId === user?.id || escrow.partyBUserId === user?.id;
+      if (!isInvolved) return false;
+    }
+
+    // Apply search query filter
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
@@ -283,7 +293,7 @@ export default function EscrowList() {
         </div>
 
         {/* Filters */}
-        <div className="flex gap-4 mb-6">
+        <div className="flex flex-wrap gap-4 mb-6">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
@@ -308,8 +318,20 @@ export default function EscrowList() {
               <SelectItem value="DISPUTED">Disputed</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="icon">
-            <Filter className="h-4 w-4" />
+          {isAuthenticated && (
+            <div className="flex items-center space-x-2 bg-white px-3 py-2 rounded-md border">
+              <Checkbox
+                id="showOnlyMyDeals"
+                checked={showOnlyMyDeals}
+                onCheckedChange={(checked) => setShowOnlyMyDeals(checked === true)}
+              />
+              <Label htmlFor="showOnlyMyDeals" className="text-sm cursor-pointer whitespace-nowrap">
+                Only my deals
+              </Label>
+            </div>
+          )}
+          <Button variant="outline" size="icon" onClick={() => refetch()} disabled={isFetching}>
+            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
           </Button>
         </div>
 

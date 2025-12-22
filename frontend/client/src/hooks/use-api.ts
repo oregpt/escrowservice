@@ -17,6 +17,7 @@ import {
   orgFeatureFlags,
   trafficConfig,
   trafficPurchase,
+  standaloneTraffic,
   type User,
   type UserRole,
   type AccountWithTotals,
@@ -1113,5 +1114,85 @@ export function useTrafficPurchaseStatus(escrowId: string | undefined, serviceTy
     },
     // Only fetch for TRAFFIC_BUY escrows
     enabled: !!escrowId && serviceTypeId === 'TRAFFIC_BUY',
+  });
+}
+
+// Check traffic purchase status from Canton API (live status check)
+export function useCheckTrafficStatus() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      escrowId,
+      trackingId,
+      bearerToken,
+      iapCookie,
+    }: {
+      escrowId: string;
+      trackingId: string;
+      bearerToken: string;
+      iapCookie?: string;
+    }) => {
+      const res = await trafficPurchase.checkStatus(escrowId, trackingId, bearerToken, iapCookie);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: (_data, variables) => {
+      // Refresh escrow data (in case it was auto-confirmed)
+      queryClient.invalidateQueries({ queryKey: ['escrow', variables.escrowId] });
+      queryClient.invalidateQueries({ queryKey: ['escrows'] });
+      queryClient.invalidateQueries({ queryKey: ['traffic-purchase-status', variables.escrowId] });
+    },
+  });
+}
+
+// ===== STANDALONE TRAFFIC PURCHASE (No Escrow) =====
+
+// Execute standalone traffic purchase
+export function useStandaloneTrafficPurchase() {
+  return useMutation({
+    mutationFn: async ({
+      receivingValidatorPartyId,
+      trafficAmountBytes,
+      bearerToken,
+      iapCookie,
+    }: {
+      receivingValidatorPartyId: string;
+      trafficAmountBytes: number;
+      bearerToken: string;
+      iapCookie?: string;
+    }) => {
+      const res = await standaloneTraffic.execute({
+        receivingValidatorPartyId,
+        trafficAmountBytes,
+        bearerToken,
+        iapCookie,
+      });
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+  });
+}
+
+// Check standalone traffic purchase status
+export function useStandaloneTrafficStatus() {
+  return useMutation({
+    mutationFn: async ({
+      trackingId,
+      bearerToken,
+      iapCookie,
+    }: {
+      trackingId: string;
+      bearerToken: string;
+      iapCookie?: string;
+    }) => {
+      const res = await standaloneTraffic.checkStatus({
+        trackingId,
+        bearerToken,
+        iapCookie,
+      });
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
   });
 }

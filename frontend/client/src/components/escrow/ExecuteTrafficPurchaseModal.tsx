@@ -5,9 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, AlertCircle, CheckCircle, Zap, Copy, ExternalLink, Code, ArrowRight, Download, ChevronDown, ChevronRight } from 'lucide-react';
-import { useExecuteTrafficPurchase, useTrafficConfig } from '@/hooks/use-api';
+import { useExecuteTrafficPurchase, useTrafficConfig, useCheckTrafficStatus } from '@/hooks/use-api';
 import { useToast } from '@/hooks/use-toast';
-import type { EscrowWithParties, TrafficPurchaseResponse } from '@/lib/api';
+import type { EscrowWithParties, TrafficPurchaseResponse, TrafficStatusCheckResponse } from '@/lib/api';
 
 interface ExecuteTrafficPurchaseModalProps {
   escrow: EscrowWithParties;
@@ -25,9 +25,14 @@ export function ExecuteTrafficPurchaseModal({ escrow, open, onOpenChange }: Exec
   const [result, setResult] = useState<TrafficPurchaseResponse | null>(null);
   const [confirmationStep, setConfirmationStep] = useState<ConfirmationStep>(0);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [statusCheckResult, setStatusCheckResult] = useState<TrafficStatusCheckResponse | null>(null);
+  const [showStatusCheckForm, setShowStatusCheckForm] = useState(false);
+  const [statusCheckToken, setStatusCheckToken] = useState('');
+  const [statusCheckCookie, setStatusCheckCookie] = useState('');
 
   const { data: trafficConfig, isLoading: configLoading } = useTrafficConfig();
   const executeTrafficPurchase = useExecuteTrafficPurchase();
+  const checkTrafficStatus = useCheckTrafficStatus();
 
   const validatorPartyId = escrow.metadata?.validatorPartyId as string | undefined;
   const trafficAmountBytes = escrow.metadata?.trafficAmountBytes as number | undefined;
@@ -146,7 +151,54 @@ export function ExecuteTrafficPurchaseModal({ escrow, open, onOpenChange }: Exec
     setResult(null);
     setConfirmationStep(0);
     setShowAdvanced(false);
+    setStatusCheckResult(null);
+    setShowStatusCheckForm(false);
+    setStatusCheckToken('');
+    setStatusCheckCookie('');
     onOpenChange(false);
+  };
+
+  const handleCheckStatus = async () => {
+    if (!result?.trackingId || !statusCheckToken.trim()) {
+      toast({ title: 'Error', description: 'Tracking ID and Bearer Token are required', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      const statusResult = await checkTrafficStatus.mutateAsync({
+        escrowId: escrow.id,
+        trackingId: result.trackingId,
+        bearerToken: statusCheckToken.trim(),
+        iapCookie: statusCheckCookie.trim() || undefined,
+      });
+      setStatusCheckResult(statusResult);
+      setStatusCheckToken(''); // Clear token after use
+      setStatusCheckCookie('');
+
+      if (statusResult.autoConfirmed) {
+        toast({
+          title: 'Deal Auto-Confirmed!',
+          description: 'Traffic purchase verified and deal confirmed.',
+        });
+      } else if (statusResult.cantonStatus?.status === 'completed' || statusResult.cantonStatus?.status === 'success') {
+        toast({
+          title: 'Traffic Purchase Completed',
+          description: 'The Canton Network has confirmed the purchase.',
+        });
+      } else if (statusResult.cantonStatus?.status === 'failed') {
+        toast({
+          title: 'Traffic Purchase Failed',
+          description: statusResult.cantonStatus.failure_reason || 'Unknown failure',
+          variant: 'destructive',
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Status Check Failed',
+        description: error?.message || 'Failed to check status',
+        variant: 'destructive',
+      });
+    }
   };
 
   const copyToClipboard = (text: string) => {
@@ -259,6 +311,197 @@ Purchase Details:
                     Save tracking ID and response as a text file for your records
                   </p>
                 </div>
+
+                {/* Check Status Section */}
+                {result.trackingId && (
+                  <div className="mt-4 pt-3 border-t border-emerald-200">
+                    {!showStatusCheckForm && !statusCheckResult ? (
+                      <Button
+                        variant="outline"
+                        className="w-full border-blue-300 text-blue-700 hover:bg-blue-100"
+                        onClick={() => setShowStatusCheckForm(true)}
+                      >
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        Check Canton Status
+                      </Button>
+                    ) : showStatusCheckForm && !statusCheckResult ? (
+                      <div className="space-y-3">
+                        <h5 className="font-medium text-sm text-blue-900">Check Purchase Status</h5>
+                        <p className="text-xs text-muted-foreground">
+                          Verify the traffic purchase status on the Canton Network. If successful, the deal will be auto-confirmed.
+                        </p>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="status-token" className="text-xs">
+                            Bearer Token <span className="text-red-500">*</span>
+                          </Label>
+                          <Input
+                            id="status-token"
+                            type="password"
+                            placeholder="Enter your Canton wallet bearer token"
+                            value={statusCheckToken}
+                            onChange={(e) => setStatusCheckToken(e.target.value)}
+                            disabled={checkTrafficStatus.isPending}
+                            className="text-sm"
+                          />
+                        </div>
+
+                        {/* Advanced Options for Status Check */}
+                        <div className="border rounded-lg">
+                          <button
+                            type="button"
+                            className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-slate-50 transition-colors rounded-lg"
+                            onClick={() => setShowAdvanced(!showAdvanced)}
+                          >
+                            <span>Advanced Options</span>
+                            {showAdvanced ? (
+                              <ChevronDown className="h-3 w-3" />
+                            ) : (
+                              <ChevronRight className="h-3 w-3" />
+                            )}
+                          </button>
+
+                          {showAdvanced && (
+                            <div className="px-3 pb-3 border-t">
+                              <div className="pt-2">
+                                <Label htmlFor="status-iap-cookie" className="text-xs">
+                                  IAP Cookie <Badge variant="outline" className="ml-1 text-[10px]">MPCH only</Badge>
+                                </Label>
+                                <Input
+                                  id="status-iap-cookie"
+                                  type="password"
+                                  placeholder="GCP IAP cookie (optional)"
+                                  value={statusCheckCookie}
+                                  onChange={(e) => setStatusCheckCookie(e.target.value)}
+                                  disabled={checkTrafficStatus.isPending}
+                                  className="mt-1 text-sm"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setShowStatusCheckForm(false);
+                              setStatusCheckToken('');
+                              setStatusCheckCookie('');
+                            }}
+                            disabled={checkTrafficStatus.isPending}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={handleCheckStatus}
+                            disabled={!statusCheckToken.trim() || checkTrafficStatus.isPending}
+                            className="flex-1 bg-blue-600 hover:bg-blue-700"
+                          >
+                            {checkTrafficStatus.isPending && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
+                            Check Status
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {/* Status Check Result */}
+                    {statusCheckResult && (
+                      <div className="space-y-3">
+                        <div className={`rounded-lg p-3 ${
+                          statusCheckResult.autoConfirmed
+                            ? 'bg-green-50 border border-green-200'
+                            : statusCheckResult.cantonStatus?.status === 'completed' || statusCheckResult.cantonStatus?.status === 'success'
+                              ? 'bg-blue-50 border border-blue-200'
+                              : statusCheckResult.cantonStatus?.status === 'failed' || statusCheckResult.cantonStatus?.status === 'rejected'
+                                ? 'bg-red-50 border border-red-200'
+                                : 'bg-slate-50 border border-slate-200'
+                        }`}>
+                          <div className="flex items-center gap-2 mb-2">
+                            {statusCheckResult.autoConfirmed ? (
+                              <>
+                                <CheckCircle className="h-4 w-4 text-green-600" />
+                                <span className="font-medium text-sm text-green-900">Deal Auto-Confirmed!</span>
+                              </>
+                            ) : statusCheckResult.cantonStatus?.status === 'completed' || statusCheckResult.cantonStatus?.status === 'success' ? (
+                              <>
+                                <CheckCircle className="h-4 w-4 text-blue-600" />
+                                <span className="font-medium text-sm text-blue-900">Purchase Completed</span>
+                              </>
+                            ) : statusCheckResult.cantonStatus?.status === 'failed' ? (
+                              <>
+                                <AlertCircle className="h-4 w-4 text-red-600" />
+                                <span className="font-medium text-sm text-red-900">Purchase Failed</span>
+                              </>
+                            ) : statusCheckResult.cantonStatus?.status === 'rejected' ? (
+                              <>
+                                <AlertCircle className="h-4 w-4 text-red-600" />
+                                <span className="font-medium text-sm text-red-900">Purchase Rejected</span>
+                              </>
+                            ) : (
+                              <>
+                                <Loader2 className="h-4 w-4 text-slate-600" />
+                                <span className="font-medium text-sm text-slate-900">Status: {statusCheckResult.cantonStatus?.status || 'Unknown'}</span>
+                              </>
+                            )}
+                          </div>
+
+                          {statusCheckResult.autoConfirmed && (
+                            <p className="text-xs text-green-700 mb-2">
+                              The escrow has been confirmed on your behalf. Details have been added to the deal messages.
+                            </p>
+                          )}
+
+                          {statusCheckResult.cantonStatus?.failure_reason && (
+                            <p className="text-xs text-red-700 mb-2">
+                              Reason: {statusCheckResult.cantonStatus.failure_reason}
+                            </p>
+                          )}
+
+                          {statusCheckResult.cantonStatus?.rejection_reason && (
+                            <p className="text-xs text-red-700 mb-2">
+                              Reason: {statusCheckResult.cantonStatus.rejection_reason}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Full Canton Response */}
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Full Canton Response</Label>
+                          <pre className="mt-1 bg-slate-900 text-slate-100 p-3 rounded text-xs overflow-x-auto max-h-48 whitespace-pre-wrap break-all">
+                            {JSON.stringify(statusCheckResult.cantonStatus, null, 2)}
+                          </pre>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="mt-1 h-7 text-xs"
+                            onClick={() => copyToClipboard(JSON.stringify(statusCheckResult.cantonStatus, null, 2))}
+                          >
+                            <Copy className="h-3 w-3 mr-1" />
+                            Copy Response
+                          </Button>
+                        </div>
+
+                        {/* Check Again Button */}
+                        {!statusCheckResult.autoConfirmed && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setStatusCheckResult(null);
+                              setShowStatusCheckForm(true);
+                            }}
+                            className="w-full"
+                          >
+                            Check Again
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4">

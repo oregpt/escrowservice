@@ -647,6 +647,15 @@ export class EscrowService {
         OR e.party_a_user_id = $1
         -- User's email matches counterparty_email (invited by email)
         ${userEmail ? `OR e.counterparty_email = $2` : ''}
+        -- Open offers (anyone can accept) - not from user's own org
+        OR (
+          e.is_open = true
+          AND e.party_b_user_id IS NULL
+          AND e.party_b_org_id IS NULL
+          AND e.status IN ('CREATED', 'PENDING_ACCEPTANCE')
+          AND e.party_a_org_id NOT IN (SELECT organization_id FROM org_members WHERE user_id = $1)
+          AND (e.party_a_user_id IS NULL OR e.party_a_user_id != $1)
+        )
       )
     `;
     const params: any[] = [userId];

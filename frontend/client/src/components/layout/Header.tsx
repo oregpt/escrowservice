@@ -197,8 +197,8 @@ export function Header() {
   };
 
   // Build nav items based on auth status
-  // Both authenticated and unauthenticated users see Dashboard and Deals
-  // Authenticated users also see Balances
+  // Unauthenticated users only see Deals (can't create deals, only view)
+  // Authenticated users see Dashboard, Deals, and Balances
   const navItems = user?.isAuthenticated
     ? [
         { label: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -206,7 +206,6 @@ export function Header() {
         { label: "Balances", href: "/account", icon: Wallet },
       ]
     : [
-        { label: "Dashboard", href: "/", icon: LayoutDashboard },
         { label: "Deals", href: "/escrow", icon: ShieldCheck },
       ];
 
