@@ -2,7 +2,7 @@ import { pool } from '../db/connection.js';
 import type { OrgFeatureFlag, FeatureKey } from '../types/index.js';
 
 // Available feature keys
-const AVAILABLE_FEATURES: FeatureKey[] = ['tools_section', 'traffic_buyer'];
+const AVAILABLE_FEATURES: FeatureKey[] = ['tools_section', 'traffic_buyer', 'tokenization'];
 
 export class OrgFeatureFlagsService {
   // Get all available feature keys
