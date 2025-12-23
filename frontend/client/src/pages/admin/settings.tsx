@@ -306,12 +306,12 @@ export default function AdminSettingsPage() {
               <Input
                 id="registryApiUrl"
                 type="url"
-                placeholder="https://testnetregistry.agenticledger.ai"
+                placeholder="https://theregistry.agenticledger.ai"
                 value={settings.registryApiUrl}
                 onChange={(e) => updateSetting('registryApiUrl', e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Testnet: https://testnetregistry.agenticledger.ai | Mainnet: https://theregistry.agenticledger.ai
+                Example: https://theregistry.agenticledger.ai
               </p>
             </div>
           </CardContent>

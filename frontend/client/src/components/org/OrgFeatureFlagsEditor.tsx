@@ -5,7 +5,6 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, Settings2, Zap, Wrench, Link, Save, CheckCircle } from 'lucide-react';
 import { useOrgFeatureFlags, useSetFeatureFlag, useRegistryConfig, useUpdateRegistryConfig } from '@/hooks/use-api';
 import { useToast } from '@/hooks/use-toast';
@@ -55,13 +54,12 @@ export function OrgFeatureFlagsEditor({ orgId, orgName, open, onOpenChange }: Or
   const { data: registryConfig, isLoading: registryConfigLoading } = useRegistryConfig();
   const updateRegistryConfig = useUpdateRegistryConfig();
   const [registryApiKey, setRegistryApiKey] = useState('');
-  const [registryEnvironment, setRegistryEnvironment] = useState<'TESTNET' | 'MAINNET'>('TESTNET');
+  const [registryEnvironment, setRegistryEnvironment] = useState<'MAINNET'>('MAINNET');
   const [registryWalletAddress, setRegistryWalletAddress] = useState('');
 
   // Load registry config when available
   useEffect(() => {
     if (registryConfig) {
-      setRegistryEnvironment(registryConfig.environment || 'TESTNET');
       setRegistryWalletAddress(registryConfig.walletAddress || '');
     }
   }, [registryConfig]);
@@ -225,19 +223,6 @@ export function OrgFeatureFlagsEditor({ orgId, orgName, open, onOpenChange }: Or
                               onChange={(e) => setRegistryApiKey(e.target.value)}
                               className="text-sm"
                             />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label htmlFor="registry-env" className="text-xs">Environment</Label>
-                            <Select value={registryEnvironment} onValueChange={(v) => setRegistryEnvironment(v as 'TESTNET' | 'MAINNET')}>
-                              <SelectTrigger id="registry-env" className="text-sm">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="TESTNET">Testnet</SelectItem>
-                                <SelectItem value="MAINNET">Mainnet</SelectItem>
-                              </SelectContent>
-                            </Select>
                           </div>
 
                           <div className="space-y-2">

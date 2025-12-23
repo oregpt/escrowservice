@@ -4,8 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, AlertCircle, CheckCircle, Link, Copy, History, RefreshCw, ExternalLink } from 'lucide-react';
-import { useTokenizeEscrow, useUpdateTokenization, useTokenizationStatus, useTokenizationHistory, useRegistryConfig } from '@/hooks/use-api';
+import { Loader2, AlertCircle, CheckCircle, Link, Copy, History, RefreshCw, ExternalLink, Upload } from 'lucide-react';
+import { useTokenizeEscrow, useUpdateTokenization, useTokenizationStatus, useTokenizationHistory, useRegistryConfig, useSyncTokenizationStatus, usePushToBlockchain } from '@/hooks/use-api';
 import { useToast } from '@/hooks/use-toast';
 import type { Escrow, EscrowWithParties, TokenizationRecord } from '@/lib/api';
 
@@ -20,6 +20,7 @@ export function TokenizeModal({ escrow, open, onOpenChange }: TokenizeModalProps
   const [customName, setCustomName] = useState('');
   const [customDescription, setCustomDescription] = useState('');
   const [showHistory, setShowHistory] = useState(false);
+  const [showAlreadyTokenizedPrompt, setShowAlreadyTokenizedPrompt] = useState(false);
 
   const { data: registryConfig, isLoading: configLoading } = useRegistryConfig();
   const { data: tokenizationStatus, isLoading: statusLoading, refetch: refetchStatus } = useTokenizationStatus(escrow.id);
@@ -27,9 +28,59 @@ export function TokenizeModal({ escrow, open, onOpenChange }: TokenizeModalProps
 
   const tokenizeEscrow = useTokenizeEscrow();
   const updateTokenization = useUpdateTokenization();
+  const syncStatus = useSyncTokenizationStatus();
+  const pushToBlockchain = usePushToBlockchain();
 
   const isTokenized = tokenizationStatus?.isTokenized;
   const latestRecord = tokenizationStatus?.record;
+
+  const handleSyncStatus = async () => {
+    try {
+      const result = await syncStatus.mutateAsync(escrow.id);
+      if (result?.updated) {
+        toast({
+          title: 'Status Updated',
+          description: 'Contract ID is now available from theRegistry.',
+        });
+      } else {
+        toast({
+          title: 'Still Pending',
+          description: 'Blockchain sync is still in progress. Try again in a moment.',
+        });
+      }
+      await refetchStatus();
+    } catch (error: any) {
+      toast({
+        title: 'Sync Failed',
+        description: error?.message || 'Failed to sync status',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handlePushToBlockchain = async () => {
+    try {
+      const result = await pushToBlockchain.mutateAsync(escrow.id);
+      if (result?.pushed) {
+        toast({
+          title: 'Push Successful',
+          description: 'Asset has been pushed to the Canton blockchain.',
+        });
+      } else {
+        toast({
+          title: 'Push Submitted',
+          description: 'Push request submitted. Run sync to check status.',
+        });
+      }
+      await refetchStatus();
+    } catch (error: any) {
+      toast({
+        title: 'Push Failed',
+        description: error?.message || 'Failed to push to blockchain',
+        variant: 'destructive',
+      });
+    }
+  };
 
   const handleTokenize = async () => {
     try {
@@ -44,22 +95,43 @@ export function TokenizeModal({ escrow, open, onOpenChange }: TokenizeModalProps
         title: 'Tokenization Successful',
         description: 'Escrow has been registered on the Canton blockchain.',
       });
+      // Refetch status to show the tokenized state
+      await refetchStatus();
     } catch (error: any) {
-      toast({
-        title: 'Tokenization Failed',
-        description: error?.message || 'Failed to tokenize escrow',
-        variant: 'destructive',
-      });
+      const errorMsg = error?.message?.toLowerCase() || '';
+      // Check if already tokenized error
+      if (errorMsg.includes('already tokenized') || errorMsg.includes('use update')) {
+        setShowAlreadyTokenizedPrompt(true);
+        await refetchStatus(); // Refresh to get current tokenization status
+      } else {
+        toast({
+          title: 'Tokenization Failed',
+          description: error?.message || 'Failed to tokenize escrow',
+          variant: 'destructive',
+        });
+      }
     }
   };
 
   const handleUpdate = async () => {
     try {
+      // Always sync first to get latest contract_id before updating
+      const syncResult = await syncStatus.mutateAsync(escrow.id);
+      if (syncResult?.updated) {
+        toast({
+          title: 'Status Synced',
+          description: 'Contract ID updated from theRegistry.',
+        });
+      }
+
+      // Now proceed with the update
       await updateTokenization.mutateAsync(escrow.id);
       toast({
         title: 'Update Successful',
         description: 'Tokenization metadata has been updated on the Canton blockchain.',
       });
+      // Refetch to show updated record
+      await refetchStatus();
     } catch (error: any) {
       toast({
         title: 'Update Failed',
@@ -123,6 +195,41 @@ export function TokenizeModal({ escrow, open, onOpenChange }: TokenizeModalProps
             </div>
           )}
 
+          {/* Already tokenized prompt - shown when tokenize attempt finds existing */}
+          {showAlreadyTokenizedPrompt && !isTokenized && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <CheckCircle className="h-5 w-5 text-blue-600" />
+                <span className="font-medium text-blue-900">Already Tokenized</span>
+              </div>
+              <p className="text-sm text-blue-700 mb-3">
+                This escrow has already been tokenized on theRegistry. Would you like to update the tokenization metadata instead?
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAlreadyTokenizedPrompt(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-blue-600 hover:bg-blue-700"
+                  onClick={() => {
+                    setShowAlreadyTokenizedPrompt(false);
+                    handleUpdate();
+                  }}
+                  disabled={updateTokenization.isPending}
+                >
+                  {updateTokenization.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Update Tokenization
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Already tokenized - show status */}
           {!statusLoading && isTokenized && latestRecord && (
             <div className="space-y-4">
@@ -162,19 +269,82 @@ export function TokenizeModal({ escrow, open, onOpenChange }: TokenizeModalProps
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-3 text-sm">
+                  {/* Blockchain Status Grid - 3 key values */}
+                  <div className="grid grid-cols-3 gap-3 text-sm">
                     <div>
                       <Label className="text-xs text-emerald-700">Sync Status</Label>
                       <Badge
                         variant={latestRecord.syncStatus === 'synced' ? 'default' : 'secondary'}
-                        className={latestRecord.syncStatus === 'synced' ? 'bg-emerald-600' : ''}
+                        className={`mt-1 ${latestRecord.syncStatus === 'synced' ? 'bg-emerald-600' : ''}`}
                       >
                         {latestRecord.syncStatus}
                       </Badge>
                     </div>
                     <div>
+                      <Label className="text-xs text-emerald-700">On-Chain Status</Label>
+                      <Badge
+                        variant={latestRecord.onchainStatus === 'onchain' ? 'default' : 'secondary'}
+                        className={`mt-1 ${latestRecord.onchainStatus === 'onchain' ? 'bg-blue-600' : ''}`}
+                      >
+                        {latestRecord.onchainStatus || 'unchecked'}
+                      </Badge>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-emerald-700">Found on Chain</Label>
+                      <Badge
+                        variant={latestRecord.foundOnChain ? 'default' : 'secondary'}
+                        className={`mt-1 ${latestRecord.foundOnChain ? 'bg-green-600' : 'bg-amber-500'}`}
+                      >
+                        {latestRecord.foundOnChain ? 'Yes' : 'No'}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Sync and Push Buttons */}
+                  <div className="flex gap-2">
+                    {/* Sync Button - always available to check status */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSyncStatus}
+                      disabled={syncStatus.isPending || pushToBlockchain.isPending}
+                      className="flex-1"
+                    >
+                      {syncStatus.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                      )}
+                      Check Blockchain
+                    </Button>
+
+                    {/* Push Button - only show when onchainStatus is 'local-only' */}
+                    {latestRecord.onchainStatus === 'local-only' && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={handlePushToBlockchain}
+                        disabled={pushToBlockchain.isPending || syncStatus.isPending}
+                        className="flex-1 bg-amber-600 hover:bg-amber-700"
+                      >
+                        {pushToBlockchain.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        ) : (
+                          <Upload className="h-4 w-4 mr-2" />
+                        )}
+                        Push to Blockchain
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
                       <Label className="text-xs text-emerald-700">Escrow Status</Label>
-                      <p className="text-sm">{latestRecord.escrowStatus}</p>
+                      <p className="text-sm mt-1">{latestRecord.escrowStatus}</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-emerald-700">Environment</Label>
+                      <Badge variant="outline" className="mt-1">{latestRecord.environment}</Badge>
                     </div>
                   </div>
 

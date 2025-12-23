@@ -615,6 +615,8 @@ export interface TokenizationRecordExtended {
   previousContractId?: string;
   // Status tracking
   syncStatus: 'pending' | 'synced' | 'failed';
+  onchainStatus?: 'unchecked' | 'local-only' | 'onchain' | string;
+  foundOnChain?: boolean;
   environment: 'TESTNET' | 'MAINNET';
   // Tokenization platform identifiers
   tokenId?: string;

@@ -354,7 +354,9 @@ router.get('/status/:escrowId', requireAuth, async (req, res) => {
     }> = {
       success: true,
       data: {
-        isTokenized: !!record && record.syncStatus === 'synced',
+        // isTokenized is true if there's a record (even if sync is pending)
+        // syncStatus indicates blockchain confirmation progress
+        isTokenized: !!record && record.syncStatus !== 'failed',
         record,
       },
     };
@@ -366,6 +368,112 @@ router.get('/status/:escrowId', requireAuth, async (req, res) => {
       error: error instanceof Error ? error.message : 'Unknown error',
     };
     res.status(500).json(response);
+  }
+});
+
+/**
+ * POST /api/registry/sync/:escrowId
+ * Sync tokenization status from theRegistry (check if contract_id is now available)
+ */
+router.post('/sync/:escrowId', requireAuth, async (req, res) => {
+  try {
+    const userId = req.userId!;
+    const { escrowId } = req.params;
+
+    const user = await userService.getUserById(userId);
+    if (!user?.primaryOrgId) {
+      return res.status(400).json({
+        success: false,
+        error: 'User does not belong to an organization',
+      });
+    }
+
+    // Verify user has access to this escrow
+    const escrow = await escrowService.getEscrowById(escrowId);
+    if (!escrow) {
+      return res.status(404).json({
+        success: false,
+        error: 'Escrow not found',
+      });
+    }
+
+    // Check if user's org is party A or B
+    if (escrow.partyAOrgId !== user.primaryOrgId && escrow.partyBOrgId !== user.primaryOrgId) {
+      return res.status(403).json({
+        success: false,
+        error: 'You do not have access to this escrow',
+      });
+    }
+
+    const result = await registryService.syncTokenizationStatus(escrowId, user.primaryOrgId);
+
+    res.json({
+      success: result.success,
+      data: {
+        updated: result.updated,
+        record: result.record,
+      },
+      error: result.error,
+    });
+  } catch (error) {
+    console.error('Error syncing tokenization status:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /api/registry/push/:escrowId
+ * Push asset to Canton blockchain (re-push when local-only or failed)
+ */
+router.post('/push/:escrowId', requireAuth, async (req, res) => {
+  try {
+    const userId = req.userId!;
+    const { escrowId } = req.params;
+
+    const user = await userService.getUserById(userId);
+    if (!user?.primaryOrgId) {
+      return res.status(400).json({
+        success: false,
+        error: 'User does not belong to an organization',
+      });
+    }
+
+    // Verify user has access to this escrow
+    const escrow = await escrowService.getEscrowById(escrowId);
+    if (!escrow) {
+      return res.status(404).json({
+        success: false,
+        error: 'Escrow not found',
+      });
+    }
+
+    // Check if user's org is party A or B
+    if (escrow.partyAOrgId !== user.primaryOrgId && escrow.partyBOrgId !== user.primaryOrgId) {
+      return res.status(403).json({
+        success: false,
+        error: 'You do not have access to this escrow',
+      });
+    }
+
+    const result = await registryService.pushToBlockchain(escrowId, user.primaryOrgId);
+
+    res.json({
+      success: result.success,
+      data: {
+        pushed: result.pushed,
+        record: result.record,
+      },
+      error: result.error,
+    });
+  } catch (error) {
+    console.error('Error pushing to blockchain:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
   }
 });
 

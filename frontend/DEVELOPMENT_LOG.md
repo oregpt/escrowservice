@@ -5,11 +5,88 @@ EscrowService is a full-stack escrow platform built with React (Vite) frontend a
 
 ---
 
-## Latest Session: December 21, 2025
+## Latest Session: December 23, 2025
 
 ### Features Implemented This Session
 
-#### 1. Confirmation Forms with Attachments (NEW)
+#### 1. theRegistry Tokenization Integration (NEW)
+Added Canton blockchain tokenization via theRegistry platform. Escrows can now be registered as on-chain assets.
+
+**The Feature:**
+- Organizations can enable "Tokenization" feature flag
+- When enabled, eligible escrows show a "Tokenize" button
+- Tokenization creates an immutable on-chain record of the escrow
+- Updates to tokenized escrows create new contracts (archives old)
+
+**API Integration Learnings (for theRegistry API):**
+
+*Request Format:*
+1. Use `asset_type_id: 1` (number), not `assetType: "TrafficPurchase"` (string)
+2. `fields` must be array format: `[{ key: 'assetName', value: '...' }, { key: 'assetDescription', value: '...' }]`
+3. `attributes` must use `key` (not `trait_type`), all values must be strings (use `String(number)`)
+4. `metadata` must be object (not JSON.stringify'd string)
+5. Field keys are `assetName` and `assetDescription` (not `name` and `description`)
+6. Required fields: `asset_type_id`, `wallet_address`, `network`, `fields`, `attributes`, `metadata`
+
+*Response Format:*
+7. Response is wrapped: `{success: true, data: {...}}`
+8. Blockchain fields are nested: `data.blockchain.update_id`, `data.blockchain.contract_id`, etc.
+9. Use `data.asset_registration_id` (not `id` at top level)
+10. `contract_id` is **NULL initially** with `status: "pending"` - populated after async blockchain sync
+11. `data.token_id` contains the unique blockchain token identifier
+
+*See full API guide: `docs/theRegistry-API-Guide.md`*
+
+**Sync Status Polling Feature:**
+- `contract_id` is NULL immediately after tokenization (blockchain sync is async)
+- Added "Check for Update" button in TokenizeModal when status is "pending"
+- Button polls theRegistry API via `GET /api/public/asset-registrations/:id`
+- If `contract_id` is now available, updates local record and shows "synced"
+- Route: `POST /api/registry/sync/:escrowId`
+- UI shows spinning loader while checking, toast notifications for results
+
+**Files Created:**
+- `backend/src/services/registry.service.ts` - theRegistry API service with encryption
+- `client/src/components/org/OrgFeatureFlagsEditor.tsx` - Per-org feature flag management
+- `client/src/components/escrow/TokenizationButton.tsx` - Tokenization UI component
+
+**Files Modified:**
+- `backend/src/db/migrate.ts`:
+  - Added `org_registry_config` table (API key encrypted, wallet address, environment)
+  - Added `tokenization_records` table (contract IDs, sync status, metadata)
+  - Added `is_tokenized` column to escrows
+- `backend/src/services/org-feature-flags.service.ts`:
+  - Added 'tokenization' to AVAILABLE_FEATURES array
+- `backend/src/services/platform-settings.service.ts`:
+  - Added `registryApiUrl` for platform-level API URL config
+- `client/src/pages/admin/settings.tsx`:
+  - Added theRegistry section with API URL configuration
+- `client/src/lib/api.ts`:
+  - Added `FeatureKey` type with 'tokenization'
+  - Added registry config API endpoints
+  - Added `registry.syncStatus()` for polling contract_id availability
+- `client/src/hooks/use-api.ts`:
+  - Added `useSyncTokenizationStatus()` mutation hook
+- `client/src/components/escrow/TokenizeModal.tsx`:
+  - Added sync button next to "pending" status badge
+  - Added `handleSyncStatus()` function with toast notifications
+  - Added `refetchStatus()` calls after tokenize/update operations
+
+**Configuration:**
+- **Platform Level**: theRegistry API URL (Admin → Platform Settings)
+- **Org Level**: API Key + Wallet Address (Org → Feature Flags → Tokenization toggle)
+
+**Environment Update:**
+- Removed testnet environment option
+- Only mainnet (https://theregistry.agenticledger.ai) is supported
+
+---
+
+## Session: December 21, 2025
+
+### Features Implemented
+
+#### 2. Confirmation Forms with Attachments
 Added modal-based confirmation forms for Fund and Confirm actions that support notes, file attachments, and escrow-until-completion option.
 
 **The Feature:**
@@ -151,7 +228,13 @@ npm run dev:client
 
 ## Session History
 
-### December 21, 2025 (Current)
+### December 23, 2025 (Current)
+- **theRegistry Tokenization Integration** - Canton blockchain tokenization via theRegistry platform
+- **Per-org Feature Flags UI** - Toggle tokenization per organization with inline config
+- **API Integration** - Full theRegistry API integration with asset registration and metadata updates
+- **Testnet Removal** - Simplified to mainnet-only configuration
+
+### December 21, 2025
 - **Confirmation Forms with Attachments** - Modal forms for Fund/Confirm with notes, file upload, and escrow-until-completion option
 - **Action Buttons on Deal Cards** - Dynamic Accept/Fund/Confirm/Cancel buttons based on status and role
 - **Cancellation Rules Update** - Only allow cancel before Party B accepts (PENDING status only)

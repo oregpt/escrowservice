@@ -668,6 +668,16 @@ BEGIN
         ALTER TABLE tokenization_records ADD COLUMN environment VARCHAR(20) DEFAULT 'TESTNET';
     END IF;
 
+    -- Add onchain_status (unchecked/local-only/onchain)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tokenization_records' AND column_name = 'onchain_status') THEN
+        ALTER TABLE tokenization_records ADD COLUMN onchain_status VARCHAR(30) DEFAULT 'unchecked';
+    END IF;
+
+    -- Add found_on_chain flag
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tokenization_records' AND column_name = 'found_on_chain') THEN
+        ALTER TABLE tokenization_records ADD COLUMN found_on_chain BOOLEAN DEFAULT false;
+    END IF;
+
     -- Make contract_id nullable (it's null until synced)
     ALTER TABLE tokenization_records ALTER COLUMN contract_id DROP NOT NULL;
 END $$;

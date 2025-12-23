@@ -1282,6 +1282,40 @@ export function useCanUpdateTokenization(escrowId: string | undefined) {
   });
 }
 
+// Sync tokenization status from theRegistry (poll for contract_id)
+export function useSyncTokenizationStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (escrowId: string) => {
+      const res = await registry.syncStatus(escrowId);
+      if (!res.success) throw new Error(res.error || 'Failed to sync status');
+      return res.data;
+    },
+    onSuccess: (data, escrowId) => {
+      // Invalidate tokenization queries to refresh the UI
+      queryClient.invalidateQueries({ queryKey: ['tokenization-status', escrowId] });
+      queryClient.invalidateQueries({ queryKey: ['tokenization-history', escrowId] });
+    },
+  });
+}
+
+// Push asset to Canton blockchain (re-push when local-only or failed)
+export function usePushToBlockchain() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (escrowId: string) => {
+      const res = await registry.pushToBlockchain(escrowId);
+      if (!res.success) throw new Error(res.error || 'Failed to push to blockchain');
+      return res.data;
+    },
+    onSuccess: (data, escrowId) => {
+      // Invalidate tokenization queries to refresh the UI
+      queryClient.invalidateQueries({ queryKey: ['tokenization-status', escrowId] });
+      queryClient.invalidateQueries({ queryKey: ['tokenization-history', escrowId] });
+    },
+  });
+}
+
 // Tokenize an escrow (first-time registration)
 export function useTokenizeEscrow() {
   const queryClient = useQueryClient();

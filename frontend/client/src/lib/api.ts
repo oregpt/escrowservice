@@ -1160,6 +1160,8 @@ export interface TokenizationRecord {
   previousContractId?: string;
   // Status tracking
   syncStatus: 'pending' | 'synced' | 'failed';
+  onchainStatus?: 'unchecked' | 'local-only' | 'onchain' | string;
+  foundOnChain?: boolean;
   environment: 'TESTNET' | 'MAINNET';
   // Tokenization platform identifiers
   tokenId?: string;
@@ -1232,4 +1234,16 @@ export const registry = {
   // Check if a tokenized escrow can be updated
   canUpdate: (escrowId: string) =>
     apiFetch<{ canUpdate: boolean; reason?: string }>(`/registry/can-update/${escrowId}`),
+
+  // Sync tokenization status from theRegistry (poll for contract_id)
+  syncStatus: (escrowId: string) =>
+    apiFetch<{ updated: boolean; record: TokenizationRecord | null }>(`/registry/sync/${escrowId}`, {
+      method: 'POST',
+    }),
+
+  // Push asset to Canton blockchain (re-push when local-only or failed)
+  pushToBlockchain: (escrowId: string) =>
+    apiFetch<{ pushed: boolean; record: TokenizationRecord | null }>(`/registry/push/${escrowId}`, {
+      method: 'POST',
+    }),
 };
