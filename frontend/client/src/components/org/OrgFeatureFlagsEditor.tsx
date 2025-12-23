@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Settings2, Zap, Wrench } from 'lucide-react';
+import { Loader2, Settings2, Zap, Wrench, Link } from 'lucide-react';
 import { useOrgFeatureFlags, useSetFeatureFlag } from '@/hooks/use-api';
 import { useToast } from '@/hooks/use-toast';
 import type { FeatureKey } from '@/lib/api';
@@ -34,6 +34,12 @@ const FEATURE_INFO: Record<FeatureKey, {
     description: 'Allow members to execute Canton Network traffic purchases. Requires Tools Section to be enabled.',
     icon: Zap,
     color: 'text-amber-500',
+  },
+  tokenization: {
+    label: 'Tokenization',
+    description: 'Allow members to tokenize escrows on the Canton blockchain via theRegistry. Adds "Tokenize" button to eligible deals.',
+    icon: Link,
+    color: 'text-purple-500',
   },
 };
 
