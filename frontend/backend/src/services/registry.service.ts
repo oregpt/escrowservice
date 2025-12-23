@@ -376,8 +376,8 @@ export async function tokenizeEscrow(
     wallet_address: config.walletAddress,
     network: config.environment === 'MAINNET' ? 'mainnet' : 'testnet',
     fields: [
-      { key: 'name', value: options?.customName || escrow.title || `Escrow ${escrow.id.slice(0, 8)}` },
-      { key: 'description', value: options?.customDescription || escrow.description || `${escrow.serviceTypeId} escrow contract` },
+      { key: 'assetName', value: options?.customName || escrow.title || `Escrow ${escrow.id.slice(0, 8)}` },
+      { key: 'assetDescription', value: options?.customDescription || escrow.description || `${escrow.serviceTypeId} escrow contract` },
     ],
     attributes: [
       { key: 'service_type', value: escrow.serviceTypeId },
