@@ -4,8 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Settings2, Zap, Wrench, Link } from 'lucide-react';
-import { useOrgFeatureFlags, useSetFeatureFlag } from '@/hooks/use-api';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Loader2, Settings2, Zap, Wrench, Link, Save, CheckCircle } from 'lucide-react';
+import { useOrgFeatureFlags, useSetFeatureFlag, useRegistryConfig, useUpdateRegistryConfig } from '@/hooks/use-api';
 import { useToast } from '@/hooks/use-toast';
 import type { FeatureKey } from '@/lib/api';
 
@@ -49,12 +51,46 @@ export function OrgFeatureFlagsEditor({ orgId, orgName, open, onOpenChange }: Or
   const setFeatureFlag = useSetFeatureFlag();
   const [pendingChanges, setPendingChanges] = useState<Record<string, boolean>>({});
 
+  // Registry config for tokenization
+  const { data: registryConfig, isLoading: registryConfigLoading } = useRegistryConfig();
+  const updateRegistryConfig = useUpdateRegistryConfig();
+  const [registryApiKey, setRegistryApiKey] = useState('');
+  const [registryEnvironment, setRegistryEnvironment] = useState<'TESTNET' | 'MAINNET'>('TESTNET');
+  const [registryWalletAddress, setRegistryWalletAddress] = useState('');
+
+  // Load registry config when available
+  useEffect(() => {
+    if (registryConfig) {
+      setRegistryEnvironment(registryConfig.environment || 'TESTNET');
+      setRegistryWalletAddress(registryConfig.walletAddress || '');
+    }
+  }, [registryConfig]);
+
   // Reset pending changes when dialog closes
   useEffect(() => {
     if (!open) {
       setPendingChanges({});
+      setRegistryApiKey('');
     }
   }, [open]);
+
+  const handleSaveRegistryConfig = async () => {
+    try {
+      await updateRegistryConfig.mutateAsync({
+        apiKey: registryApiKey || undefined,
+        environment: registryEnvironment,
+        walletAddress: registryWalletAddress || undefined,
+      });
+      setRegistryApiKey(''); // Clear API key field after save
+      toast({ title: "Registry Configuration Saved", description: "Your theRegistry settings have been updated." });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to save registry config',
+        variant: 'destructive',
+      });
+    }
+  };
 
   const handleToggle = async (featureKey: FeatureKey, enabled: boolean) => {
     console.log('[FeatureFlags] handleToggle called', { orgId, featureKey, enabled });
@@ -159,6 +195,76 @@ export function OrgFeatureFlagsEditor({ orgId, orgName, open, onOpenChange }: Or
                       )}
                     </div>
                   </div>
+
+                  {/* Inline Registry Config when Tokenization is enabled */}
+                  {featureKey === 'tokenization' && isEnabled && (
+                    <div className="mt-4 pt-4 border-t border-slate-200 space-y-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">theRegistry Configuration</span>
+                        {registryConfig?.isConfigured && (
+                          <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Configured
+                          </Badge>
+                        )}
+                      </div>
+
+                      {registryConfigLoading ? (
+                        <div className="flex justify-center py-4">
+                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        </div>
+                      ) : (
+                        <>
+                          <div className="space-y-2">
+                            <Label htmlFor="registry-api-key" className="text-xs">API Key</Label>
+                            <Input
+                              id="registry-api-key"
+                              type="password"
+                              placeholder={registryConfig?.hasApiKey ? "••••••••••••••••" : "Enter your theRegistry API key"}
+                              value={registryApiKey}
+                              onChange={(e) => setRegistryApiKey(e.target.value)}
+                              className="text-sm"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="registry-env" className="text-xs">Environment</Label>
+                            <Select value={registryEnvironment} onValueChange={(v) => setRegistryEnvironment(v as 'TESTNET' | 'MAINNET')}>
+                              <SelectTrigger id="registry-env" className="text-sm">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="TESTNET">Testnet</SelectItem>
+                                <SelectItem value="MAINNET">Mainnet</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="registry-wallet" className="text-xs">Wallet Address (optional)</Label>
+                            <Input
+                              id="registry-wallet"
+                              placeholder="Your Canton wallet address"
+                              value={registryWalletAddress}
+                              onChange={(e) => setRegistryWalletAddress(e.target.value)}
+                              className="text-sm"
+                            />
+                          </div>
+
+                          <Button
+                            size="sm"
+                            onClick={handleSaveRegistryConfig}
+                            disabled={updateRegistryConfig.isPending}
+                            className="w-full"
+                          >
+                            {updateRegistryConfig.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            <Save className="mr-2 h-4 w-4" />
+                            Save Registry Config
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })
