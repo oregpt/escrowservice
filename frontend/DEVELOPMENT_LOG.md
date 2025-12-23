@@ -5,11 +5,44 @@ EscrowService is a full-stack escrow platform built with React (Vite) frontend a
 
 ---
 
-## Latest Session: December 23, 2025
+## Latest Session: December 23, 2025 (Continued)
 
 ### Features Implemented This Session
 
-#### 1. theRegistry Tokenization Integration (NEW)
+#### 1. Enhanced Tokenization Status & Push-to-Blockchain
+
+**New Status Display:**
+- Show all 3 blockchain status values in TokenizeModal:
+  - `syncStatus`: pending | synced | failed
+  - `onchainStatus`: unchecked | local-only | onchain
+  - `foundOnChain`: boolean (Yes/No)
+- Added cyan "Tokenized" badge on escrow cards when tokenized
+
+**Sync Improvements:**
+- Fixed sync to use `POST /sync` (Canton blockchain lookup) instead of just `GET` (database read)
+- Two-step sync: POST /sync triggers Canton lookup, then GET reads latest from database
+- "Update Metadata" now always syncs first before updating
+
+**Push-to-Blockchain Feature:**
+- New `POST /api/registry/push/:escrowId` endpoint
+- When `onchainStatus` is 'local-only', shows amber "Push to Blockchain" button
+- Calls theRegistry's `POST /api/public/asset-registrations/:id/push` to re-push failed assets
+
+**Already Tokenized Handling:**
+- When clicking Tokenize on already-tokenized escrow, shows friendly prompt
+- Prompt offers "Update Tokenization" button instead of confusing error
+
+**Database Changes:**
+- Added `onchain_status` column (VARCHAR, default 'unchecked')
+- Added `found_on_chain` column (BOOLEAN, default false)
+
+---
+
+## Session: December 23, 2025 (Earlier)
+
+### Features Implemented
+
+#### 1. theRegistry Tokenization Integration
 Added Canton blockchain tokenization via theRegistry platform. Escrows can now be registered as on-chain assets.
 
 **The Feature:**

@@ -183,6 +183,47 @@ Once an escrow is FUNDED, neither party can cancel unilaterally. Only the design
 
 ---
 
+## 5.5. Canton Blockchain Tokenization (NEW - Dec 23, 2025)
+
+**What It Does:** Register escrows as immutable on-chain assets on the Canton blockchain via theRegistry.
+
+### The Feature
+- Organizations can enable the "Tokenization" feature flag
+- Eligible escrows show a "Tokenize" button
+- Tokenized escrows display a cyan "Tokenized" badge on deal cards
+- Creates an immutable on-chain record with full escrow metadata
+
+### How It Works
+```
+1. Click "Tokenize" on an eligible escrow
+2. Escrow data is sent to theRegistry API
+3. theRegistry registers it on Canton blockchain
+4. Contract ID is assigned (async - may take a moment)
+5. Badge shows "Tokenized" on the deal card
+```
+
+### Status Tracking
+The tokenization modal shows three status values:
+| Status | Values | Meaning |
+|--------|--------|---------|
+| **Sync Status** | pending, synced, failed | Has theRegistry synced with Canton? |
+| **On-Chain Status** | unchecked, local-only, onchain | Is it actually on the blockchain? |
+| **Found on Chain** | Yes, No | Did Canton confirm the contract exists? |
+
+### Actions Available
+| Button | When Shown | What It Does |
+|--------|------------|--------------|
+| **Tokenize** | Not yet tokenized | Register escrow on blockchain |
+| **Check Blockchain** | Always (when tokenized) | Sync status from Canton |
+| **Push to Blockchain** | When "local-only" | Re-push failed registrations |
+| **Update Metadata** | When tokenized | Update on-chain metadata (archives old contract) |
+
+### Configuration Required
+- **Platform Level**: theRegistry API URL (Admin → Platform Settings)
+- **Organization Level**: API Key + Wallet Address (Org → Feature Flags → Tokenization)
+
+---
+
 ## 6. Counterparty Assignment
 
 Three methods to assign the other party:
