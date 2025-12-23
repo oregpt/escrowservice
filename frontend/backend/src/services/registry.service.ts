@@ -387,7 +387,7 @@ export async function tokenizeEscrow(
       { key: 'created_at', value: escrow.createdAt?.toISOString() || new Date().toISOString() },
       { key: 'escrow_id', value: escrow.id },
     ],
-    metadata: JSON.stringify(metadata),
+    metadata,
   };
 
   // Decrypt API key
