@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { ArrowUpRight, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Link } from "wouter";
 import type { AccountSummaryProps } from "@/lib/types";
 
@@ -51,8 +51,8 @@ export function AccountSummary({
               <Plus className="mr-2 h-4 w-4" /> Deposit
             </Button>
           </Link>
-          <Button variant="outline" className="flex-1" disabled>
-            Withdraw <ArrowUpRight className="ml-2 h-4 w-4" />
+          <Button variant="outline" className="flex-1" disabled title="Coming Soon">
+            Withdraw (Coming Soon)
           </Button>
         </div>
       </CardContent>
