@@ -360,25 +360,34 @@ export async function tokenizeEscrow(
     };
   }
 
-  // Build the registration request
-  const assetType = SERVICE_TYPE_TO_ASSET_TYPE[escrow.serviceTypeId] || 'EscrowContract';
+  // Build the registration request matching theRegistry API spec
   const metadata = buildEscrowMetadata(escrow);
 
-  const registrationRequest: RegistryAssetRegistrationRequest = {
-    assetType,
-    fields: {
-      name: options?.customName || escrow.title || `Escrow ${escrow.id.slice(0, 8)}`,
-      description: options?.customDescription || escrow.description || `${escrow.serviceTypeId} escrow contract`,
-      owner: config.walletAddress || organizationId,
-    },
-    attributes: [
-      { trait_type: 'Service Type', value: escrow.serviceTypeId },
-      { trait_type: 'Amount', value: escrow.amount, display_type: 'number' },
-      { trait_type: 'Currency', value: escrow.currency },
-      { trait_type: 'Status', value: escrow.status },
-      { trait_type: 'Created', value: escrow.createdAt?.toISOString() || new Date().toISOString() },
+  // Validate required wallet_address
+  if (!config.walletAddress) {
+    return {
+      success: false,
+      error: 'Wallet address is required for tokenization. Please configure it in the organization feature flags.',
+    };
+  }
+
+  const registrationRequest = {
+    asset_type_id: 1, // Default asset type ID - can be configured later
+    wallet_address: config.walletAddress,
+    network: config.environment === 'MAINNET' ? 'mainnet' : 'testnet',
+    fields: [
+      { key: 'name', value: options?.customName || escrow.title || `Escrow ${escrow.id.slice(0, 8)}` },
+      { key: 'description', value: options?.customDescription || escrow.description || `${escrow.serviceTypeId} escrow contract` },
     ],
-    metadata,
+    attributes: [
+      { key: 'service_type', value: escrow.serviceTypeId },
+      { key: 'amount', value: String(escrow.amount) },
+      { key: 'currency', value: escrow.currency },
+      { key: 'status', value: escrow.status },
+      { key: 'created_at', value: escrow.createdAt?.toISOString() || new Date().toISOString() },
+      { key: 'escrow_id', value: escrow.id },
+    ],
+    metadata: JSON.stringify(metadata),
   };
 
   // Decrypt API key
