@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Globe, DollarSign, Shield, Loader2, RefreshCw } from "lucide-react";
+import { Save, Globe, DollarSign, Shield, Loader2, RefreshCw, Link } from "lucide-react";
 import { getSessionId } from "@/lib/api";
 
 interface PlatformSettings {
@@ -20,6 +20,7 @@ interface PlatformSettings {
   requireEmailVerification: boolean;
   allowAnonymousUsers: boolean;
   maintenanceMode: boolean;
+  registryApiUrl: string;
 }
 
 const DEFAULT_SETTINGS: PlatformSettings = {
@@ -32,6 +33,7 @@ const DEFAULT_SETTINGS: PlatformSettings = {
   requireEmailVerification: false,
   allowAnonymousUsers: true,
   maintenanceMode: false,
+  registryApiUrl: "",
 };
 
 export default function AdminSettingsPage() {
@@ -285,6 +287,32 @@ export default function AdminSettingsPage() {
                 checked={settings.maintenanceMode}
                 onCheckedChange={(checked) => updateSetting('maintenanceMode', checked)}
               />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Registry / Tokenization Settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Link className="h-5 w-5" />
+              theRegistry (Tokenization)
+            </CardTitle>
+            <CardDescription>Configure theRegistry API for Canton blockchain tokenization</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="registryApiUrl">theRegistry API URL</Label>
+              <Input
+                id="registryApiUrl"
+                type="url"
+                placeholder="https://testnetregistry.agenticledger.ai"
+                value={settings.registryApiUrl}
+                onChange={(e) => updateSetting('registryApiUrl', e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Testnet: https://testnetregistry.agenticledger.ai | Mainnet: https://theregistry.agenticledger.ai
+              </p>
             </div>
           </CardContent>
         </Card>

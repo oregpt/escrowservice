@@ -621,6 +621,7 @@ CREATE TABLE IF NOT EXISTS org_registry_config (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     organization_id UUID NOT NULL UNIQUE REFERENCES organizations(id) ON DELETE CASCADE,
     api_key_encrypted TEXT,
+    api_url TEXT,
     environment VARCHAR(20) DEFAULT 'TESTNET',
     wallet_address TEXT,
     is_configured BOOLEAN DEFAULT false,
@@ -628,6 +629,14 @@ CREATE TABLE IF NOT EXISTS org_registry_config (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_org_registry_config_org ON org_registry_config(organization_id);
+
+-- Add api_url column if it doesn't exist (for existing tables)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'org_registry_config' AND column_name = 'api_url') THEN
+        ALTER TABLE org_registry_config ADD COLUMN api_url TEXT;
+    END IF;
+END $$;
 
 -- ============================================
 -- UPDATE TOKENIZATION_RECORDS for theRegistry integration

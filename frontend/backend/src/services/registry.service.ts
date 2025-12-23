@@ -11,6 +11,7 @@
 
 import { pool } from '../db/connection.js';
 import crypto from 'crypto';
+import { platformSettingsService } from './platform-settings.service.js';
 import type {
   OrgRegistryConfig,
   TokenizationRecordExtended,
@@ -21,12 +22,6 @@ import type {
   Escrow,
   ServiceTypeId,
 } from '../types/index.js';
-
-// theRegistry API base URLs
-const REGISTRY_API_URLS = {
-  TESTNET: 'https://api.testnet.theregistry.app',
-  MAINNET: 'https://api.theregistry.app',
-};
 
 // Encryption key for API keys (should come from env in production)
 const ENCRYPTION_KEY = process.env.REGISTRY_ENCRYPTION_KEY || 'default-key-change-in-production-32';
@@ -69,7 +64,7 @@ function decryptApiKey(encryptedData: string): string {
  */
 export async function getOrgRegistryConfig(organizationId: string): Promise<OrgRegistryConfig | null> {
   const result = await pool.query(
-    `SELECT id, organization_id, api_key_encrypted, environment, wallet_address, is_configured, created_at, updated_at
+    `SELECT id, organization_id, api_key_encrypted, api_url, environment, wallet_address, is_configured, created_at, updated_at
      FROM org_registry_config
      WHERE organization_id = $1`,
     [organizationId]
@@ -84,6 +79,7 @@ export async function getOrgRegistryConfig(organizationId: string): Promise<OrgR
     id: row.id,
     organizationId: row.organization_id,
     apiKeyEncrypted: row.api_key_encrypted,
+    apiUrl: row.api_url,
     environment: row.environment,
     walletAddress: row.wallet_address,
     isConfigured: row.is_configured,
@@ -387,7 +383,16 @@ export async function tokenizeEscrow(
 
   // Decrypt API key
   const apiKey = decryptApiKey(config.apiKeyEncrypted);
-  const baseUrl = REGISTRY_API_URLS[config.environment];
+
+  // Get API URL from platform settings
+  const platformSettings = await platformSettingsService.getSettings();
+  if (!platformSettings.registryApiUrl) {
+    return {
+      success: false,
+      error: 'theRegistry API URL not configured in platform settings',
+    };
+  }
+  const baseUrl = platformSettings.registryApiUrl.replace(/\/$/, ''); // Remove trailing slash
 
   try {
     // Call theRegistry API
@@ -524,7 +529,16 @@ export async function updateTokenization(
 
   // Decrypt API key
   const apiKey = decryptApiKey(config.apiKeyEncrypted);
-  const baseUrl = REGISTRY_API_URLS[config.environment];
+
+  // Get API URL from platform settings
+  const platformSettings = await platformSettingsService.getSettings();
+  if (!platformSettings.registryApiUrl) {
+    return {
+      success: false,
+      error: 'theRegistry API URL not configured in platform settings',
+    };
+  }
+  const baseUrl = platformSettings.registryApiUrl.replace(/\/$/, ''); // Remove trailing slash
 
   try {
     // Call theRegistry metadata update API

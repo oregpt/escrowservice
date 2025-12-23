@@ -10,6 +10,7 @@ export interface PlatformSettings {
   allowAnonymousUsers: boolean;
   maintenanceMode: boolean;
   trafficPricePerMB: number; // Price in USD per MB of traffic (Canton Network)
+  registryApiUrl: string; // theRegistry API URL for tokenization
 }
 
 const DEFAULT_SETTINGS: PlatformSettings = {
@@ -22,6 +23,7 @@ const DEFAULT_SETTINGS: PlatformSettings = {
   allowAnonymousUsers: true,
   maintenanceMode: false,
   trafficPricePerMB: 60, // $60 per MB default
+  registryApiUrl: '', // No default - must be configured
 };
 
 export class PlatformSettingsService {
