@@ -31,8 +31,9 @@ export default function EscrowList() {
 
   const user = authData?.user;
 
-  // Check feature flags for traffic buyer
-  const trafficBuyerEnabled = useIsFeatureEnabled('traffic_buyer');
+  // Check feature flags
+  const { data: trafficBuyerEnabled } = useIsFeatureEnabled(user?.primaryOrgId, 'traffic_buyer');
+  const { data: tokenizationEnabled } = useIsFeatureEnabled(user?.primaryOrgId, 'tokenization');
   const isAuthenticated = user?.isAuthenticated;
 
   // Filter escrows by search query and "my deals" filter
@@ -265,6 +266,11 @@ export default function EscrowList() {
         isAuthenticated,
       onExecuteTraffic: () => setExecuteTrafficEscrow(escrow),
       isExecutingTraffic: false,
+      // Tokenize - when feature flag enabled, user is party A, and status is eligible
+      canTokenize: tokenizationEnabled &&
+        isCreator &&
+        isAuthenticated &&
+        ['PENDING_ACCEPTANCE', 'PENDING_FUNDING', 'FUNDED', 'PARTY_B_CONFIRMED', 'PARTY_A_CONFIRMED', 'COMPLETED'].includes(escrow.status),
     };
   };
 

@@ -615,6 +615,65 @@ END $$;
 DELETE FROM password_reset_tokens WHERE expires_at < NOW() - INTERVAL '24 hours';
 
 -- ============================================
+-- ORG REGISTRY CONFIG (theRegistry API keys per org)
+-- ============================================
+CREATE TABLE IF NOT EXISTS org_registry_config (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID NOT NULL UNIQUE REFERENCES organizations(id) ON DELETE CASCADE,
+    api_key_encrypted TEXT,
+    environment VARCHAR(20) DEFAULT 'TESTNET',
+    wallet_address TEXT,
+    is_configured BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_org_registry_config_org ON org_registry_config(organization_id);
+
+-- ============================================
+-- UPDATE TOKENIZATION_RECORDS for theRegistry integration
+-- ============================================
+DO $$
+BEGIN
+    -- Add asset_registration_id (theRegistry's ID)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tokenization_records' AND column_name = 'asset_registration_id') THEN
+        ALTER TABLE tokenization_records ADD COLUMN asset_registration_id INTEGER;
+    END IF;
+
+    -- Add previous_contract_id (for tracking contract history)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tokenization_records' AND column_name = 'previous_contract_id') THEN
+        ALTER TABLE tokenization_records ADD COLUMN previous_contract_id TEXT;
+    END IF;
+
+    -- Add sync_status (pending/synced/failed)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tokenization_records' AND column_name = 'sync_status') THEN
+        ALTER TABLE tokenization_records ADD COLUMN sync_status VARCHAR(20) DEFAULT 'pending';
+    END IF;
+
+    -- Add updated_at timestamp
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tokenization_records' AND column_name = 'updated_at') THEN
+        ALTER TABLE tokenization_records ADD COLUMN updated_at TIMESTAMP DEFAULT NOW();
+    END IF;
+
+    -- Add environment (TESTNET/MAINNET)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tokenization_records' AND column_name = 'environment') THEN
+        ALTER TABLE tokenization_records ADD COLUMN environment VARCHAR(20) DEFAULT 'TESTNET';
+    END IF;
+
+    -- Make contract_id nullable (it's null until synced)
+    ALTER TABLE tokenization_records ALTER COLUMN contract_id DROP NOT NULL;
+END $$;
+
+-- Add is_tokenized flag to escrows table
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'escrows' AND column_name = 'is_tokenized') THEN
+        ALTER TABLE escrows ADD COLUMN is_tokenized BOOLEAN DEFAULT false;
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_escrows_is_tokenized ON escrows(is_tokenized) WHERE is_tokenized = true;
+
+-- ============================================
 -- ACCOUNT RESTRUCTURE: Per-User-Per-Org Personal Wallets
 -- ============================================
 -- Account types:

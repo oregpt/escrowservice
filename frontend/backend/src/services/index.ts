@@ -7,6 +7,9 @@ export { providerSettingsService, ProviderSettingsService } from './provider-set
 export { stripeService, StripeService } from './stripe.service.js';
 export { userService, UserService } from './user.service.js';
 
+// Registry (theRegistry tokenization)
+export * as registryService from './registry.service.js';
+
 // SSH Tunnel & Proxied HTTP
 export {
   startTunnel,

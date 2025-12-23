@@ -18,6 +18,7 @@ import {
   trafficConfig,
   trafficPurchase,
   standaloneTraffic,
+  registry,
   type User,
   type UserRole,
   type AccountWithTotals,
@@ -43,6 +44,9 @@ import {
   type OrgFeatureFlag,
   type UserTrafficConfig,
   type TrafficPurchaseResponse,
+  type TokenizationRecord,
+  type OrgRegistryConfig,
+  type TokenizationResponse,
 } from '@/lib/api';
 
 // ===== AUTH HOOKS =====
@@ -1193,6 +1197,132 @@ export function useStandaloneTrafficStatus() {
       });
       if (!res.success) throw new Error(res.error);
       return res.data;
+    },
+  });
+}
+
+// ===== REGISTRY (theRegistry TOKENIZATION) HOOKS =====
+
+// Get org registry configuration
+export function useRegistryConfig() {
+  return useQuery({
+    queryKey: ['registry-config'],
+    queryFn: async () => {
+      const res = await registry.getConfig();
+      return res.success ? res.data : null;
+    },
+  });
+}
+
+// Update org registry configuration
+export function useUpdateRegistryConfig() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: { apiKey?: string; environment?: 'TESTNET' | 'MAINNET'; walletAddress?: string }) => {
+      const res = await registry.updateConfig(data);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['registry-config'] });
+    },
+  });
+}
+
+// Get tokenization status for an escrow
+export function useTokenizationStatus(escrowId: string | undefined) {
+  return useQuery({
+    queryKey: ['tokenization-status', escrowId],
+    queryFn: async () => {
+      if (!escrowId) return null;
+      const res = await registry.getStatus(escrowId);
+      return res.success ? res.data : null;
+    },
+    enabled: !!escrowId,
+  });
+}
+
+// Get tokenization history for an escrow
+export function useTokenizationHistory(escrowId: string | undefined) {
+  return useQuery({
+    queryKey: ['tokenization-history', escrowId],
+    queryFn: async () => {
+      if (!escrowId) return [];
+      const res = await registry.getHistory(escrowId);
+      return res.success ? res.data : [];
+    },
+    enabled: !!escrowId,
+  });
+}
+
+// Check if an escrow can be tokenized
+export function useCanTokenize(escrowId: string | undefined) {
+  return useQuery({
+    queryKey: ['can-tokenize', escrowId],
+    queryFn: async () => {
+      if (!escrowId) return { canTokenize: false, reason: 'No escrow ID' };
+      const res = await registry.canTokenize(escrowId);
+      return res.success ? res.data : { canTokenize: false, reason: res.error };
+    },
+    enabled: !!escrowId,
+  });
+}
+
+// Check if a tokenized escrow can be updated
+export function useCanUpdateTokenization(escrowId: string | undefined) {
+  return useQuery({
+    queryKey: ['can-update-tokenization', escrowId],
+    queryFn: async () => {
+      if (!escrowId) return { canUpdate: false, reason: 'No escrow ID' };
+      const res = await registry.canUpdate(escrowId);
+      return res.success ? res.data : { canUpdate: false, reason: res.error };
+    },
+    enabled: !!escrowId,
+  });
+}
+
+// Tokenize an escrow (first-time registration)
+export function useTokenizeEscrow() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      escrowId,
+      options,
+    }: {
+      escrowId: string;
+      options?: { customName?: string; customDescription?: string };
+    }) => {
+      const res = await registry.tokenize(escrowId, options);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['tokenization-status', variables.escrowId] });
+      queryClient.invalidateQueries({ queryKey: ['tokenization-history', variables.escrowId] });
+      queryClient.invalidateQueries({ queryKey: ['can-tokenize', variables.escrowId] });
+      queryClient.invalidateQueries({ queryKey: ['can-update-tokenization', variables.escrowId] });
+      queryClient.invalidateQueries({ queryKey: ['escrow', variables.escrowId] });
+      queryClient.invalidateQueries({ queryKey: ['escrows'] });
+    },
+  });
+}
+
+// Update tokenized escrow metadata
+export function useUpdateTokenization() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (escrowId: string) => {
+      const res = await registry.updateTokenization(escrowId);
+      if (!res.success) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: (_data, escrowId) => {
+      queryClient.invalidateQueries({ queryKey: ['tokenization-status', escrowId] });
+      queryClient.invalidateQueries({ queryKey: ['tokenization-history', escrowId] });
+      queryClient.invalidateQueries({ queryKey: ['can-update-tokenization', escrowId] });
     },
   });
 }

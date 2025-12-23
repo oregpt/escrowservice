@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Trash2, Plus, AlertTriangle, Loader2, Save, Wrench, Zap, CheckCircle, Globe } from "lucide-react";
+import { Trash2, Plus, AlertTriangle, Loader2, Save, Wrench, Zap, CheckCircle, Globe, Link as LinkIcon } from "lucide-react";
 import { useState, useEffect } from "react";
 import {
   useAuth,
@@ -23,6 +23,8 @@ import {
   useTrafficConfig,
   useUpsertTrafficConfig,
   useDeleteTrafficConfig,
+  useRegistryConfig,
+  useUpdateRegistryConfig,
 } from "@/hooks/use-api";
 import { useToast } from "@/hooks/use-toast";
 
@@ -43,11 +45,16 @@ export default function SettingsPage() {
   // Feature flags
   const { data: toolsSectionEnabled } = useIsFeatureEnabled(user?.primaryOrgId, 'tools_section');
   const { data: trafficBuyerEnabled } = useIsFeatureEnabled(user?.primaryOrgId, 'traffic_buyer');
+  const { data: tokenizationEnabled } = useIsFeatureEnabled(user?.primaryOrgId, 'tokenization');
 
   // Traffic config
   const { data: trafficConfig, isLoading: trafficConfigLoading } = useTrafficConfig();
   const upsertTrafficConfig = useUpsertTrafficConfig();
   const deleteTrafficConfig = useDeleteTrafficConfig();
+
+  // Registry config (tokenization)
+  const { data: registryConfig, isLoading: registryConfigLoading } = useRegistryConfig();
+  const updateRegistryConfig = useUpdateRegistryConfig();
 
   // Profile form state
   const [displayName, setDisplayName] = useState(user?.displayName || '');
@@ -57,6 +64,11 @@ export default function SettingsPage() {
   const [walletValidatorUrl, setWalletValidatorUrl] = useState('');
   const [domainId, setDomainId] = useState('');
 
+  // Registry config form state
+  const [registryApiKey, setRegistryApiKey] = useState('');
+  const [registryEnvironment, setRegistryEnvironment] = useState<'TESTNET' | 'MAINNET'>('TESTNET');
+  const [registryWalletAddress, setRegistryWalletAddress] = useState('');
+
   // Sync traffic config when loaded
   useEffect(() => {
     if (trafficConfig) {
@@ -64,6 +76,14 @@ export default function SettingsPage() {
       setDomainId(trafficConfig.domainId || '');
     }
   }, [trafficConfig]);
+
+  // Sync registry config when loaded
+  useEffect(() => {
+    if (registryConfig) {
+      setRegistryEnvironment(registryConfig.environment || 'TESTNET');
+      setRegistryWalletAddress(registryConfig.walletAddress || '');
+    }
+  }, [registryConfig]);
 
   // New rule form state
   const [showNewRuleForm, setShowNewRuleForm] = useState(false);
@@ -196,8 +216,27 @@ export default function SettingsPage() {
     }
   };
 
+  const handleSaveRegistryConfig = async () => {
+    try {
+      await updateRegistryConfig.mutateAsync({
+        apiKey: registryApiKey.trim() || undefined,
+        environment: registryEnvironment,
+        walletAddress: registryWalletAddress.trim() || undefined,
+      });
+      setRegistryApiKey(''); // Clear API key field after save (never show it)
+      toast({ title: "Registry Configuration Saved", description: "Your theRegistry settings have been updated." });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save registry configuration",
+        variant: "destructive"
+      });
+    }
+  };
+
   const showToolsSection = toolsSectionEnabled;
   const showTrafficBuyer = trafficBuyerEnabled;
+  const showTokenization = tokenizationEnabled;
 
   return (
     <div className="min-h-screen bg-slate-50/50">
@@ -557,8 +596,106 @@ export default function SettingsPage() {
                   </Card>
                 )}
 
+                {/* Tokenization / theRegistry Tool */}
+                {showTokenization && (
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="flex items-center gap-2">
+                            <LinkIcon className="h-5 w-5 text-blue-500" />
+                            theRegistry (Tokenization)
+                          </CardTitle>
+                          <CardDescription>
+                            Configure your theRegistry API key to tokenize escrows on the Canton blockchain.
+                          </CardDescription>
+                        </div>
+                        {registryConfig?.isConfigured && (
+                          <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Configured
+                          </Badge>
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {registryConfigLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        </div>
+                      ) : (
+                        <>
+                          <div className="space-y-2">
+                            <Label htmlFor="registry-api-key">
+                              API Key {registryConfig?.hasApiKey && <span className="text-muted-foreground">(saved)</span>}
+                            </Label>
+                            <Input
+                              id="registry-api-key"
+                              type="password"
+                              placeholder={registryConfig?.hasApiKey ? "••••••••••••••••" : "Enter your theRegistry API key"}
+                              value={registryApiKey}
+                              onChange={(e) => setRegistryApiKey(e.target.value)}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Your API key is encrypted and securely stored. You can get an API key from theRegistry dashboard.
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="registry-environment">Environment</Label>
+                              <Select value={registryEnvironment} onValueChange={(v) => setRegistryEnvironment(v as 'TESTNET' | 'MAINNET')}>
+                                <SelectTrigger id="registry-environment">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="TESTNET">Testnet</SelectItem>
+                                  <SelectItem value="MAINNET">Mainnet</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="registry-wallet">Wallet Address (optional)</Label>
+                              <Input
+                                id="registry-wallet"
+                                placeholder="0x..."
+                                value={registryWalletAddress}
+                                onChange={(e) => setRegistryWalletAddress(e.target.value)}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                            <div className="flex items-start gap-2">
+                              <LinkIcon className="h-4 w-4 mt-0.5 shrink-0" />
+                              <div>
+                                <p className="font-medium">About theRegistry</p>
+                                <p className="text-xs mt-1">
+                                  theRegistry is a platform that enables tokenization of assets on the Canton blockchain.
+                                  Once configured, you can tokenize escrows from the deal details page.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex gap-3 pt-2">
+                            <Button
+                              onClick={handleSaveRegistryConfig}
+                              disabled={updateRegistryConfig.isPending}
+                            >
+                              {updateRegistryConfig.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                              <Save className="mr-2 h-4 w-4" />
+                              Save Configuration
+                            </Button>
+                          </div>
+                        </>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* No tools available message */}
-                {!showTrafficBuyer && (
+                {!showTrafficBuyer && !showTokenization && (
                   <Card>
                     <CardContent className="pt-6 text-center text-muted-foreground">
                       <Wrench className="h-12 w-12 mx-auto mb-4 opacity-50" />

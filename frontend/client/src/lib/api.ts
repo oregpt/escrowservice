@@ -593,7 +593,7 @@ export const ccPrice = {
 };
 
 // ===== ORG FEATURE FLAGS =====
-export type FeatureKey = 'tools_section' | 'traffic_buyer';
+export type FeatureKey = 'tools_section' | 'traffic_buyer' | 'tokenization';
 
 export interface OrgFeatureFlag {
   featureKey: FeatureKey;
@@ -1152,9 +1152,15 @@ export interface TokenizationRecord {
   id: string;
   escrowId: string;
   // On-chain identifiers
-  contractId: string;
+  contractId?: string;
   updateId?: string;
   offset?: number;
+  // theRegistry identifiers
+  assetRegistrationId?: number;
+  previousContractId?: string;
+  // Status tracking
+  syncStatus: 'pending' | 'synced' | 'failed';
+  environment: 'TESTNET' | 'MAINNET';
   // Tokenization platform identifiers
   tokenId?: string;
   tokenizationPlatform?: string;
@@ -1162,4 +1168,68 @@ export interface TokenizationRecord {
   metadata?: Record<string, any>;
   escrowStatus?: EscrowStatus;
   createdAt: string;
+  updatedAt: string;
 }
+
+// Org Registry Configuration (theRegistry API settings)
+export interface OrgRegistryConfig {
+  id: string;
+  organizationId: string;
+  environment: 'TESTNET' | 'MAINNET';
+  walletAddress?: string;
+  isConfigured: boolean;
+  hasApiKey: boolean;  // API key exists but not exposed
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Tokenization response from API
+export interface TokenizationResponse {
+  success: boolean;
+  record?: TokenizationRecord;
+  registryResponse?: Record<string, any>;
+  error?: string;
+}
+
+// ===== REGISTRY API (theRegistry Tokenization) =====
+export const registry = {
+  // Get org registry configuration
+  getConfig: () =>
+    apiFetch<OrgRegistryConfig | null>('/registry/config'),
+
+  // Update org registry configuration
+  updateConfig: (data: { apiKey?: string; environment?: 'TESTNET' | 'MAINNET'; walletAddress?: string }) =>
+    apiFetch<OrgRegistryConfig>('/registry/config', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  // Tokenize an escrow (first-time registration)
+  tokenize: (escrowId: string, options?: { customName?: string; customDescription?: string }) =>
+    apiFetch<TokenizationResponse>(`/registry/tokenize/${escrowId}`, {
+      method: 'POST',
+      body: JSON.stringify(options || {}),
+    }),
+
+  // Update tokenized escrow metadata
+  updateTokenization: (escrowId: string) =>
+    apiFetch<TokenizationResponse>(`/registry/tokenize/${escrowId}`, {
+      method: 'PATCH',
+    }),
+
+  // Get tokenization status for an escrow
+  getStatus: (escrowId: string) =>
+    apiFetch<{ isTokenized: boolean; record: TokenizationRecord | null }>(`/registry/status/${escrowId}`),
+
+  // Get tokenization history for an escrow
+  getHistory: (escrowId: string) =>
+    apiFetch<TokenizationRecord[]>(`/registry/history/${escrowId}`),
+
+  // Check if an escrow can be tokenized
+  canTokenize: (escrowId: string) =>
+    apiFetch<{ canTokenize: boolean; reason?: string }>(`/registry/can-tokenize/${escrowId}`),
+
+  // Check if a tokenized escrow can be updated
+  canUpdate: (escrowId: string) =>
+    apiFetch<{ canUpdate: boolean; reason?: string }>(`/registry/can-update/${escrowId}`),
+};

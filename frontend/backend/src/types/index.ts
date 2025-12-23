@@ -472,7 +472,7 @@ export interface PlatformStats {
 // ============================================
 
 // Feature Flags (per-org)
-export type FeatureKey = 'tools_section' | 'traffic_buyer';
+export type FeatureKey = 'tools_section' | 'traffic_buyer' | 'tokenization';
 
 export interface OrgFeatureFlag {
   id: string;
@@ -522,4 +522,134 @@ export interface UpsertTrafficConfigRequest {
 export interface ExecuteTrafficPurchaseRequest {
   bearerToken: string;  // Passed at execution time, NEVER stored
   iapCookie?: string;   // Optional - required for MPCH validators, NEVER stored
+}
+
+// ============================================
+// theRegistry TOKENIZATION TYPES
+// ============================================
+
+// Per-org registry configuration
+export interface OrgRegistryConfig {
+  id: string;
+  organizationId: string;
+  apiKeyEncrypted?: string;  // Encrypted API key for theRegistry
+  environment: 'TESTNET' | 'MAINNET';
+  walletAddress?: string;
+  isConfigured: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Asset type mapping (service type -> theRegistry asset type)
+export type RegistryAssetType =
+  | 'EscrowContract'
+  | 'TrafficPurchase'
+  | 'DocumentDelivery'
+  | 'ApiKeyExchange'
+  | 'Custom';
+
+// theRegistry API request for asset registration
+export interface RegistryAssetRegistrationRequest {
+  assetType: string;
+  fields: {
+    name: string;
+    description: string;
+    owner: string;
+    location?: string;
+    [key: string]: any;
+  };
+  attributes: Array<{
+    trait_type: string;
+    value: string | number;
+    display_type?: string;
+  }>;
+  metadata: Record<string, any>;  // All escrow data stored here
+}
+
+// theRegistry API response for asset registration
+export interface RegistryAssetRegistrationResponse {
+  id: number;  // theRegistry's asset registration ID
+  updateId: string;
+  completionOffset: number;
+  contractId: string;
+  status: string;
+  assetType: string;
+  fields: Record<string, any>;
+  attributes: Array<{
+    trait_type: string;
+    value: string | number;
+    display_type?: string;
+  }>;
+  metadata: Record<string, any>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// theRegistry metadata update request
+export interface RegistryMetadataUpdateRequest {
+  metadata: Record<string, any>;  // Full metadata (replaces, doesn't merge)
+}
+
+// theRegistry metadata update response
+export interface RegistryMetadataUpdateResponse {
+  id: number;
+  updateId: string;
+  completionOffset: number;
+  contractId: string;  // New contract ID (previous becomes archived)
+  previousContractId: string;
+  status: string;
+  metadata: Record<string, any>;
+  updatedAt: string;
+}
+
+// Extended tokenization record for theRegistry integration
+export interface TokenizationRecordExtended {
+  id: string;
+  escrowId: string;
+  // On-chain identifiers
+  contractId?: string;
+  updateId?: string;
+  offset?: number;
+  // theRegistry identifiers
+  assetRegistrationId?: number;
+  previousContractId?: string;
+  // Status tracking
+  syncStatus: 'pending' | 'synced' | 'failed';
+  environment: 'TESTNET' | 'MAINNET';
+  // Tokenization platform identifiers
+  tokenId?: string;
+  tokenizationPlatform?: string;
+  // Additional data
+  metadata?: Record<string, any>;
+  escrowStatus?: EscrowStatus;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Request to tokenize an escrow
+export interface TokenizeEscrowRequest {
+  // Optional custom fields (otherwise auto-generated from escrow)
+  customName?: string;
+  customDescription?: string;
+}
+
+// Request to update tokenized escrow metadata
+export interface UpdateTokenizationRequest {
+  // All escrow data will be included automatically
+  // This just triggers the update
+}
+
+// Response from tokenization operations
+export interface TokenizationResponse {
+  success: boolean;
+  record?: TokenizationRecordExtended;
+  registryResponse?: RegistryAssetRegistrationResponse | RegistryMetadataUpdateResponse;
+  error?: string;
+}
+
+// Org registry config upsert request
+export interface UpsertRegistryConfigRequest {
+  apiKey?: string;  // Will be encrypted before storage
+  environment?: 'TESTNET' | 'MAINNET';
+  walletAddress?: string;
 }

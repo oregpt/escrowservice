@@ -3,11 +3,12 @@ import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Clock, Shield, Globe, Loader2, CheckCircle, DollarSign, XCircle, Zap } from "lucide-react";
+import { ArrowRight, Clock, Shield, Globe, Loader2, CheckCircle, DollarSign, XCircle, Zap, Link as LinkIcon } from "lucide-react";
 import type { EscrowCardProps } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ConfirmationFormModal, type ConfirmationStep } from "./ConfirmationFormModal";
-import { useTrafficPurchaseStatus } from "@/hooks/use-api";
+import { TokenizeModal } from "./TokenizeModal";
+import { useTrafficPurchaseStatus, useTokenizationStatus } from "@/hooks/use-api";
 
 const STATUS_COLORS: Record<string, string> = {
   CREATED: "bg-slate-100 text-slate-700 border-slate-200",
@@ -36,6 +37,8 @@ interface EscrowCardWithModalProps extends EscrowCardProps {
   isExecutingTraffic?: boolean;
   // Service type ID - needed for traffic purchase status check
   serviceTypeId?: string;
+  // Tokenization - show when feature flag is enabled and status is eligible
+  canTokenize?: boolean;
 }
 
 export function EscrowCard({
@@ -69,15 +72,21 @@ export function EscrowCard({
   onExecuteTraffic,
   isExecutingTraffic,
   serviceTypeId,
+  canTokenize,
 }: EscrowCardWithModalProps) {
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [modalStep, setModalStep] = useState<ConfirmationStep | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [tokenizeModalOpen, setTokenizeModalOpen] = useState(false);
 
   // Check traffic purchase status for TRAFFIC_BUY escrows
   const { data: trafficPurchaseStatus } = useTrafficPurchaseStatus(id, serviceTypeId);
   const trafficAlreadyExecuted = trafficPurchaseStatus?.successful;
+
+  // Check tokenization status
+  const { data: tokenizationStatus } = useTokenizationStatus(canTokenize ? id : undefined);
+  const isTokenized = tokenizationStatus?.isTokenized;
 
   // Determine if any action is available
   const hasActions = canAccept || canFund || canConfirm || canCancel;
@@ -274,6 +283,26 @@ export function EscrowCard({
                   </Button>
                 )
               )}
+              {/* Tokenize button - when feature flag enabled and status is eligible */}
+              {canTokenize && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={cn(
+                    "h-8 text-xs",
+                    isTokenized
+                      ? "border-blue-200 text-blue-700 hover:bg-blue-50"
+                      : "border-slate-200 hover:bg-slate-50"
+                  )}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setTokenizeModalOpen(true);
+                  }}
+                >
+                  <LinkIcon className="h-3 w-3 mr-1" />
+                  {isTokenized ? "Update Token" : "Tokenize"}
+                </Button>
+              )}
               <Link href={`/escrow/${id}`}>
                 <Button variant="ghost" size="sm" className="h-8 text-xs hover:bg-slate-100 hover:text-slate-900 group">
                   View Details
@@ -296,6 +325,30 @@ export function EscrowCard({
           currency={currency}
           onSubmit={handleModalSubmit}
           isSubmitting={isSubmitting}
+        />
+      )}
+
+      {/* Tokenize Modal */}
+      {canTokenize && (
+        <TokenizeModal
+          escrow={{
+            id,
+            serviceTypeId: (serviceTypeId || serviceType) as any,
+            status: status as any,
+            amount,
+            currency,
+            title,
+            partyAOrgId: '',
+            createdByUserId: '',
+            isOpen: isOpen || false,
+            privacyLevel: 'platform',
+            arbiterType: 'platform_only',
+            platformFee: 0,
+            createdAt: createdAt || '',
+            updatedAt: '',
+          }}
+          open={tokenizeModalOpen}
+          onOpenChange={setTokenizeModalOpen}
         />
       )}
     </>
