@@ -146,7 +146,7 @@ export function EscrowCard({
             </div>
             <div className="flex items-center gap-2">
               {isTokenized && (
-                <Badge variant="outline" className="rounded-md px-2 py-0.5 text-xs font-medium border border-blue-300 bg-blue-50 text-blue-700">
+                <Badge variant="outline" className="rounded-md px-2 py-0.5 text-xs font-medium border border-cyan-400 bg-cyan-50 text-cyan-700">
                   <LinkIcon className="h-3 w-3 mr-1" />
                   Tokenized
                 </Badge>
