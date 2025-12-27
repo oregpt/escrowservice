@@ -66,7 +66,7 @@ export class LoopProvider implements PaymentProvider {
       // Use the existing cc-price endpoint internally
       const response = await fetch('http://localhost:' + (process.env.PORT || 5001) + '/api/cc-price');
       if (response.ok) {
-        const data = await response.json();
+        const data = await response.json() as { data?: { ccPriceUsd?: number } };
         return data.data?.ccPriceUsd || 0.1; // Default to 0.1 if not available
       }
     } catch (error) {

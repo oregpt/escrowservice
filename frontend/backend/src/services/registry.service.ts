@@ -434,7 +434,7 @@ export async function tokenizeEscrow(
       };
     }
 
-    const registryResponse = await response.json();
+    const registryResponse = await response.json() as Record<string, any>;
 
     // Log the response for debugging
     console.log('[Registry] API response:', JSON.stringify(registryResponse, null, 2));
@@ -597,7 +597,7 @@ export async function updateTokenization(
       };
     }
 
-    const registryResponse = await response.json();
+    const registryResponse = await response.json() as Record<string, any>;
 
     // Log the response for debugging
     console.log('[Registry] Metadata update response:', JSON.stringify(registryResponse, null, 2));
@@ -786,7 +786,7 @@ export async function syncTokenizationStatus(
       return { success: false, updated: false, error: `theRegistry sync API error: ${syncResponse.status}` };
     }
 
-    const syncResult = await syncResponse.json();
+    const syncResult = await syncResponse.json() as Record<string, any>;
     console.log('[Registry] POST /sync response:', JSON.stringify(syncResult, null, 2));
 
     // Extract from sync response
@@ -815,7 +815,7 @@ export async function syncTokenizationStatus(
     );
 
     if (getResponse.ok) {
-      const getResult = await getResponse.json();
+      const getResult = await getResponse.json() as Record<string, any>;
       console.log('[Registry] GET response:', JSON.stringify(getResult, null, 2));
 
       // Use GET response data as it's the most up-to-date
@@ -920,7 +920,7 @@ export async function pushToBlockchain(
       return { success: false, pushed: false, error: `theRegistry push API error: ${pushResponse.status}` };
     }
 
-    const pushResult = await pushResponse.json();
+    const pushResult = await pushResponse.json() as Record<string, any>;
     console.log('[Registry] Push response:', JSON.stringify(pushResult, null, 2));
 
     // Extract from push response

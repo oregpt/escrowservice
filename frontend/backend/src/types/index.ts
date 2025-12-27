@@ -533,6 +533,7 @@ export interface OrgRegistryConfig {
   id: string;
   organizationId: string;
   apiKeyEncrypted?: string;  // Encrypted API key for theRegistry
+  apiUrl?: string;           // Custom API URL (optional)
   environment: 'TESTNET' | 'MAINNET';
   walletAddress?: string;
   isConfigured: boolean;
