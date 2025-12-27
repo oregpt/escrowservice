@@ -504,7 +504,7 @@ export async function tokenizeEscrow(
         createdAt: record.created_at,
         updatedAt: record.updated_at,
       },
-      registryResponse,
+      registryResponse: registryResponse as any,
     };
   } catch (error) {
     console.error('Error calling theRegistry API:', error);
@@ -659,7 +659,7 @@ export async function updateTokenization(
         createdAt: record.created_at,
         updatedAt: record.updated_at,
       },
-      registryResponse,
+      registryResponse: registryResponse as any,
     };
   } catch (error) {
     console.error('Error calling theRegistry metadata update API:', error);
