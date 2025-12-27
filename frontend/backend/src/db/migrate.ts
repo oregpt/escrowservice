@@ -362,6 +362,36 @@ CREATE TABLE IF NOT EXISTS user_traffic_config (
     UNIQUE(user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_user_traffic_config_user ON user_traffic_config(user_id);
+-- User Loop Wallets (connected Canton wallets for Loop SDK funding)
+CREATE TABLE IF NOT EXISTS user_loop_wallets (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    party_id VARCHAR(255) NOT NULL,
+    public_key VARCHAR(512),
+    email VARCHAR(255),
+    connected_at TIMESTAMP DEFAULT NOW(),
+    last_used_at TIMESTAMP,
+    is_active BOOLEAN DEFAULT TRUE,
+    UNIQUE(user_id, party_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_loop_wallets_user ON user_loop_wallets(user_id);
+
+-- Loop Transfer Records (verification records for Loop SDK payments)
+CREATE TABLE IF NOT EXISTS loop_transfers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    payment_id UUID REFERENCES payments(id),
+    from_party_id VARCHAR(255) NOT NULL,
+    to_party_id VARCHAR(255) NOT NULL,
+    cc_amount DECIMAL(20, 8) NOT NULL,
+    usd_equivalent DECIMAL(15, 2),
+    exchange_rate DECIMAL(10, 6),
+    canton_tx_id VARCHAR(255) UNIQUE,
+    verified_at TIMESTAMP,
+    raw_response JSONB,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_loop_transfers_payment_id ON loop_transfers(payment_id);
+CREATE INDEX IF NOT EXISTS idx_loop_transfers_canton_tx ON loop_transfers(canton_tx_id);
 `;
 
 // Migration for existing databases - add new columns if they don't exist

@@ -21,6 +21,7 @@ import type {
 import { stripeProvider } from './providers/stripe.provider.js';
 import { cryptoProvider } from './providers/crypto.provider.js';
 import { bankProvider } from './providers/bank.provider.js';
+import { loopProvider } from './providers/loop.provider.js';
 
 export class PaymentService {
   private providers: Map<ProviderType, PaymentProvider> = new Map();
@@ -30,6 +31,7 @@ export class PaymentService {
     this.registerProvider(stripeProvider);
     this.registerProvider(cryptoProvider);
     this.registerProvider(bankProvider);
+    this.registerProvider(loopProvider);
   }
 
   /**

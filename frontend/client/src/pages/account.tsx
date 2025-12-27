@@ -15,6 +15,8 @@ import { useAllAccounts, useLedger, useOrganizations, usePaymentProviders, useDe
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import type { PaymentProviderType, AccountWithOrgInfo } from "@/lib/api";
+import { LoopSDKProvider } from "@/lib/loop/loop-context";
+import { LoopFundingModal } from "@/components/payment/LoopFundingModal";
 
 // Provider icons map
 const providerIcons: Record<string, React.ReactNode> = {
@@ -24,9 +26,11 @@ const providerIcons: Record<string, React.ReactNode> = {
   'bitcoin': <Bitcoin className="h-5 w-5" />,
   'bank': <Building className="h-5 w-5" />,
   'building-columns': <Building className="h-5 w-5" />,
+  'loop': <Wallet className="h-5 w-5" />,
+  'wallet': <Wallet className="h-5 w-5" />,
 };
 
-export default function AccountPage() {
+function AccountPage() {
   const { toast } = useToast();
   const [depositAmount, setDepositAmount] = useState('');
   const [selectedProvider, setSelectedProvider] = useState<PaymentProviderType | null>(null);
@@ -38,6 +42,9 @@ export default function AccountPage() {
 
   // Deposit target
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
+
+  // Loop modal state
+  const [loopModalOpen, setLoopModalOpen] = useState(false);
 
   const { data: allAccounts, isLoading: accountsLoading } = useAllAccounts();
   const { data: ledgerData, isLoading: ledgerLoading } = useLedger(50, 0);
@@ -97,6 +104,12 @@ export default function AccountPage() {
         description: "Please select which wallet to deposit to",
         variant: "destructive",
       });
+      return;
+    }
+
+    // Handle Loop payment - open modal instead of redirect
+    if (selectedProvider === 'loop') {
+      setLoopModalOpen(true);
       return;
     }
 
@@ -513,6 +526,33 @@ export default function AccountPage() {
           </div>
         </div>
       </PageContainer>
+
+      {/* Loop Funding Modal */}
+      <LoopFundingModal
+        open={loopModalOpen}
+        onOpenChange={setLoopModalOpen}
+        onSuccess={() => {
+          toast({
+            title: "Deposit Successful",
+            description: "Your account has been funded via Canton Wallet",
+          });
+          // Refresh accounts
+          window.location.reload();
+        }}
+        organizationId={selectedAccount?.organizationId}
+        initialAmount={depositAmount}
+      />
     </div>
   );
 }
+
+// Wrap component with LoopSDKProvider
+function AccountPageWithLoop() {
+  return (
+    <LoopSDKProvider network="mainnet">
+      <AccountPage />
+    </LoopSDKProvider>
+  );
+}
+
+export { AccountPageWithLoop as default };

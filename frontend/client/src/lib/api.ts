@@ -1080,7 +1080,7 @@ export interface StripePayment {
 }
 
 // ===== PAYMENT PROVIDER TYPES =====
-export type PaymentProviderType = 'stripe' | 'crypto' | 'bank' | string;
+export type PaymentProviderType = 'stripe' | 'crypto' | 'bank' | 'loop' | string;
 export type PaymentStatus = 'pending' | 'processing' | 'succeeded' | 'failed' | 'canceled' | 'expired';
 
 export interface PaymentProviderInfo {

@@ -5,7 +5,85 @@ EscrowService is a full-stack escrow platform built with React (Vite) frontend a
 
 ---
 
-## Latest Session: December 23, 2025 (Continued)
+## Latest Session: December 27, 2025
+
+### Features Implemented This Session
+
+#### 1. Canton Loop SDK Integration (Wallet Funding)
+
+**What It Does:**
+Fund your EscrowService account using Canton Coin (CC) from your Canton wallet via the Loop SDK. This enables native blockchain payments alongside traditional credit card funding.
+
+**Backend Implementation:**
+
+*New Provider - `backend/src/services/payment/providers/loop.provider.ts`:*
+- Full `PaymentProvider` interface implementation
+- Exchange rate fetching from Kaiko API (CC/USD)
+- Payment session creation with CC amount calculation
+- Transfer verification with amount matching
+- User wallet connection storage for returning users
+- Canton transaction ID recording for audit
+
+*New Routes - `backend/src/routes/loop.routes.ts`:*
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/payments/loop/config` | GET | Get platform wallet info + exchange rate |
+| `/api/payments/loop/create-session` | POST | Create pending payment session |
+| `/api/payments/loop/verify-transfer` | POST | Verify completed transfer & credit account |
+| `/api/payments/loop/save-wallet` | POST | Save user's wallet connection |
+| `/api/payments/loop/wallet` | GET | Get user's saved wallet |
+| `/api/payments/loop/wallet` | DELETE | Disconnect user's wallet |
+| `/api/payments/loop/exchange-rate` | GET | Get current CC/USD rate |
+
+*Database Tables Added (via migrate.ts):*
+- `loop_transfers` - Records all Canton transfers with tx IDs, amounts, parties
+  - Note: `payment_id` must be UUID type (not INTEGER) to match `payments.id`
+- `user_loop_wallets` - Stores user wallet connections (party_id, public_key, email)
+
+**Migration Fix (Dec 27):** The original migration had `payment_id INTEGER` but `payments.id` is UUID. Fixed to use `payment_id UUID` for proper compatibility.
+
+**Frontend Implementation:**
+
+*New Components:*
+- `client/src/components/payment/LoopFundingModal.tsx` - Multi-step funding flow:
+  1. Connect wallet (Loop SDK OAuth)
+  2. Enter USD amount (auto-converts to CC)
+  3. Review & confirm transfer
+  4. Processing with wallet confirmation
+  5. Success/error handling
+
+*New Hooks:*
+- `client/src/hooks/use-loop-wallet.ts` - Wallet connection & transfer management
+- `client/src/lib/loop/loop-sdk.ts` - Loop SDK wrapper
+- `client/src/lib/loop/loop-context.tsx` - React context for Loop state
+
+*Integration Points:*
+- Account page shows "Canton Wallet" as funding option when Loop is configured
+- Real-time CC/USD exchange rate display with refresh button
+- Network indicator (mainnet/testnet)
+- Saved wallet detection for returning users
+
+**Configuration Required:**
+```env
+LOOP_PLATFORM_PARTY_ID=auth0_xxx::1220xxx  # Platform receiving wallet
+LOOP_NETWORK=mainnet                         # Network selection
+KAIKO_API_KEY=xxx                            # For CC/USD price feed
+```
+
+**Payment Flow:**
+```
+1. User selects "Canton Wallet" funding option
+2. Connects Loop wallet (OAuth popup)
+3. Enters USD amount → sees CC equivalent
+4. Confirms → Loop SDK initiates transfer
+5. Backend verifies transfer amount
+6. Account credited with USD equivalent
+7. Canton TX ID stored for audit trail
+```
+
+---
+
+## Previous Session: December 23, 2025 (Continued)
 
 ### Features Implemented This Session
 
@@ -261,7 +339,13 @@ npm run dev:client
 
 ## Session History
 
-### December 23, 2025 (Current)
+### December 27, 2025 (Current)
+- **Canton Loop SDK Integration** - Native Canton wallet funding via Loop SDK
+- **CC/USD Exchange Rate** - Real-time pricing from Kaiko API
+- **Wallet Connection Storage** - Remember user wallets for returning users
+- **Multi-step Funding Modal** - Connect → Amount → Confirm → Transfer flow
+
+### December 23, 2025
 - **theRegistry Tokenization Integration** - Canton blockchain tokenization via theRegistry platform
 - **Per-org Feature Flags UI** - Toggle tokenization per organization with inline config
 - **API Integration** - Full theRegistry API integration with asset registration and metadata updates

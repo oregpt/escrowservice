@@ -279,14 +279,64 @@ Control what information is visible on the escrow:
 - **Total Balance**: Sum of all funds
 
 ### Transactions
-- Deposit funds via Stripe
+- Deposit funds via Stripe or Canton Wallet
 - View complete ledger history
 - Track all money movements
 
 ### Payments
-- Stripe checkout integration
+- Stripe checkout integration (credit/debit cards)
+- Canton Wallet funding via Loop SDK (see section 9.5)
 - Webhook handling for payment confirmation
 - Success/cancel redirect flows
+
+---
+
+## 9.5. Canton Wallet Funding (NEW - Dec 27, 2025)
+
+**What It Does:** Fund your escrow account using Canton Coin (CC) from your Canton blockchain wallet via the Loop SDK.
+
+### The Feature
+- Native blockchain payment option alongside traditional credit cards
+- Real-time CC/USD exchange rate from Kaiko API
+- Wallet connection remembered for returning users
+- Full transaction audit trail with Canton TX IDs
+
+### How It Works
+```
+1. Select "Canton Wallet" funding option
+2. Connect your Loop wallet (OAuth popup)
+3. Enter USD amount → see CC equivalent
+4. Review exchange rate and confirm
+5. Approve transfer in your wallet
+6. Account credited instantly
+```
+
+### Funding Modal Steps
+| Step | Description |
+|------|-------------|
+| **Connect** | OAuth popup to connect Loop wallet |
+| **Amount** | Enter USD, see CC equivalent with live rate |
+| **Confirm** | Review transfer details before sending |
+| **Processing** | Wallet confirmation & blockchain transfer |
+| **Success** | Account credited, Canton TX ID displayed |
+
+### Exchange Rate
+- Real-time CC/USD price from Kaiko API
+- Refresh button to get latest rate before confirming
+- Rate locked at time of session creation
+
+### Configuration Required
+| Setting | Description |
+|---------|-------------|
+| `LOOP_PLATFORM_PARTY_ID` | Platform wallet receiving CC payments |
+| `LOOP_NETWORK` | Network (mainnet or testnet) |
+| `KAIKO_API_KEY` | API key for CC/USD price feed |
+
+### Why Canton Wallet?
+- **No Credit Card Fees**: Direct blockchain transfer
+- **Instant Settlement**: No payment processor delays
+- **Native Integration**: Use your existing Canton wallet
+- **Audit Trail**: Immutable Canton transaction records
 
 ---
 
@@ -472,6 +522,8 @@ RESTful API for external systems:
 | **Phase 1** | Core escrow, orgs, Stripe, dashboard | ✅ Complete |
 | **Phase 1.5** | Obligation tracking, custom arbiter, evidence categorization, escrow security | ✅ Complete |
 | **Phase 1.6** | Confirmation forms with attachments, action buttons, $0 document deals, cancellation refinements | ✅ Complete (Dec 21) |
+| **Phase 1.7** | Canton blockchain tokenization (theRegistry), per-org feature flags | ✅ Complete (Dec 23) |
+| **Phase 1.8** | Canton Loop SDK wallet funding, CC/USD exchange rates | ✅ Complete (Dec 27) |
 | **Phase 2** | Email notifications, Platform AI arbiter | Planned |
 | **Phase 3** | Document exchange escrows, milestone-based | Planned |
 | **Phase 4** | AI agents, API, multi-currency | Future |
@@ -496,8 +548,9 @@ RESTful API for external systems:
 
 ### Infrastructure
 - SSH SOCKS5 proxy support (for IP-whitelisted APIs)
-- Canton Network integration ready
+- Canton Network integration (theRegistry tokenization + Loop SDK funding)
 - Railway PostgreSQL hosting
+- Kaiko API for CC/USD exchange rates
 
 ---
 
@@ -507,4 +560,4 @@ For development questions, see `DEVELOPMENT_LOG.md` in this directory.
 
 ---
 
-*Last Updated: December 21, 2025*
+*Last Updated: December 27, 2025*

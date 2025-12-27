@@ -13,6 +13,7 @@ import templateRoutes from './template.routes.js';
 import ccPriceRoutes from './cc-price.routes.js';
 import trafficConfigRoutes from './traffic-config.routes.js';
 import registryRoutes from './registry.routes.js';
+import loopRoutes from './loop.routes.js';
 
 const router = Router();
 
@@ -31,6 +32,7 @@ router.use('/templates', templateRoutes);
 router.use('/cc-price', ccPriceRoutes);
 router.use('/traffic-config', trafficConfigRoutes);
 router.use('/registry', registryRoutes);
+router.use('/payments/loop', loopRoutes);
 
 // Webhooks are mounted separately to handle raw body
 

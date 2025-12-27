@@ -9,7 +9,7 @@
 // Provider Types
 // ============================================================================
 
-export type ProviderType = 'stripe' | 'crypto' | 'bank' | 'paypal' | string;
+export type ProviderType = 'stripe' | 'crypto' | 'bank' | 'paypal' | 'loop' | string;
 
 export type PaymentStatus =
   | 'pending' // Awaiting user action
@@ -145,4 +145,43 @@ export interface CreatePaymentRequest {
   currency?: string;
   escrowId?: string;
   metadata?: Record<string, any>;
+}
+
+// ============================================================================
+// Loop SDK Types (Canton Wallet Funding)
+// ============================================================================
+
+export interface LoopWalletConnection {
+  partyId: string;
+  publicKey: string;
+  email?: string;
+}
+
+export interface LoopTransferRequest {
+  paymentId: string;
+  cantonTxId: string;
+  fromPartyId: string;
+  ccAmount: string;
+}
+
+export interface LoopPaymentSession extends PaymentSession {
+  providerConfig: {
+    platformPartyId: string;
+    ccAmount: string;
+    usdAmount: number;
+    exchangeRate: number;
+  };
+}
+
+export interface LoopTransferRecord {
+  id: string;
+  paymentId: string;
+  fromPartyId: string;
+  toPartyId: string;
+  ccAmount: string;
+  usdEquivalent: number;
+  exchangeRate: number;
+  cantonTxId: string;
+  verifiedAt?: Date;
+  createdAt: Date;
 }
